@@ -284,7 +284,7 @@ if __name__ == "__main__":
     parser.add_argument("--output_file", type=str, help="Output file to save results")
 
     # Model loading parameters
-    parser.add_argument("--model_path", type=str, default="/Users/mahmoud/Documents/PythonProjects/miscovery_llm/models/checkpoints/model.pth", help="Path to fine-tuned model checkpoint")
+    parser.add_argument("--model_path", type=str, default="models/model.pth", help="Path to fine-tuned model checkpoint")
     parser.add_argument("--tokenizer_name", type=str, default="miscovery/tokenizer", help="Tokenizer name or path")
 
     args = parser.parse_args()

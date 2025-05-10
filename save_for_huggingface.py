@@ -460,7 +460,7 @@ if __name__ == "__main__":
 
     # I/O parameters
     parser.add_argument("--model_path", type=str,
-                        default="/content/drive/MyDrive/miscovery/stage_02_v2/output_3/checkpoints/best_model.pth",
+                        default="stage_02/output/checkpoints/best_model.pth",
                         help="Path to best_model.pth checkpoint")
     parser.add_argument("--output_dir", type=str, default="/content/finetune_output/model",
                         help="Directory to save the HF model")

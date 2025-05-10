@@ -314,8 +314,8 @@ if __name__ == "__main__":
     parser.add_argument("--gradient_accumulation_steps", type=int, default=6, help="Gradient accumulation steps")
     parser.add_argument("--learning_rate", type=float, default=2e-5, help="Learning rate for fine-tuning")
     parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay")
-    parser.add_argument("--warmup_steps", type=int, default=10, help="Warmup steps")
-    parser.add_argument("--num_epochs", type=int, default=26, help="Number of epochs")
+    parser.add_argument("--warmup_steps", type=int, default=1000, help="Warmup steps")
+    parser.add_argument("--num_epochs", type=int, default=10, help="Number of epochs")
     parser.add_argument("--eval_steps", type=int, default=5600, help="Evaluation steps")
     parser.add_argument("--save_steps", type=int, default=40000, help="Save steps")
     parser.add_argument("--early_stopping_patience", type=int, default=5, help="Early stopping patience")
@@ -329,11 +329,11 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--tokenizer_name", type=str, default="miscovery/tokenizer", help="Tokenizer name or path")
     parser.add_argument("--checkpoint_path", type=str,
-                        default="/content/drive/MyDrive/miscovery/stage_02_v2/output_2/checkpoints/best_model.pth",
+                        default="stage_01/output/checkpoints/best_model.pth",
                         help="Path to pre-trained checkpoint from Stage 1")
-    parser.add_argument("--output_dir", type=str, default="/content/drive/MyDrive/miscovery/stage_02_v2/output_3",
+    parser.add_argument("--output_dir", type=str, default="stage_02/output",
                         help="Output directory")
-    parser.add_argument("--cache_dir", type=str, default="/content/drive/MyDrive/miscovery/stage_02_v2/cache_1",
+    parser.add_argument("--cache_dir", type=str, default="stage_02/cache",
                         help="Cache directory")
 
     args, unknown = parser.parse_known_args()

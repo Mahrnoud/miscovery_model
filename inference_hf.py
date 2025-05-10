@@ -299,39 +299,14 @@ def main():
 
     # Example prompts for evaluation
     prompts = [
-        "[LANG_EN] Summarize the following text: A man and woman have been killed in a light plane crash in Mudgee, two-hours north of Bathurst in New South Wales on Sunday. At about 10.55am emergency services were called to Mudgee Airport following reports of a light aircraft crash. It was reported that the plane had crashed into a paddock while on approach to land at the airport near Henry Lawson Drive. A man and woman were killed in a light plane crash in Mudgee, two-hours north of Bathurst in New South Wales . It is believed that the pilot and passenger were a couple. Officers from Mudgee Local Area Command attended the scene where they located a man, deceased inside the single-engine two-seater plane. The pilot who was in his 60s died on impact while the only passenger, a woman died on the scene as paramedics attempted to revive her. A crime scene has been established at the airport and will be examined. The  Australian Transport Safety Bureau and forensic officers joined a Police investigation. Stuart Godley from the Australian Transport Safety Bureau told ABC News that police will guard the site overnight and two investigators will arrive there tomorrow morning. 'We don't really know what's happened at this stage,' he said. 'All we know is that it is a small single engine aircraft, it's a Vans RV-6 and it's amateur built. 'That means it's been built by the owner, most likely the pilot.' A report will also be prepared for the information of the Coroner.",
         "[LANG_EN] In what year did the French Revolution begin?",
-        "[LANG_EN] Translate this to Arabic: What year did World War I begin?",
-        # """
-        # [LANG_AR] قم بتلخيص النص التالي: أرسلت اليونان وبلغاريا قوات إضافية إلى الحدود المشتركة بين كل منهما وتركيا لمنع اللاجئين من عبورها "باصات لجوء مباشرة إلى أوروبا" وتداول المغردون صورا لـ "حافلات مجانية" تقوم بنقل اللاجئين السوريين من مدينة اسطنبول إلى مدينة أدرنة، الواقعة على الحدود التركية اليونانية. كما أظهرت مقاطع فيديو متداولة مشاهد تدافع أعداد كبيرة من الشباب السوربين لركوب الحافلة المتوجهة إلى الحدود اليونانية. وحسب مغردين، تقوم الشرطة التركية بتسهيل عبور اللاجئين للحدود، ولكن تبدأ الاشتباكات فور وصولهم إلى الأراضي الأوروبية، وهو ما جاء بعد التصعيد الكبير الذي شهده الشمال السوري والذي أسفر عن مقتل عشرات الجنود الأتراك. وكانت السلطات التركية قد أعلنت إنها لم تتلق دعماً كافياً في استقبالها لقرابة أربعة ملايين لاجئ سوري. مواضيع قد تهمك نهاية السوريون "سلعة تجارية" كما شارك بعض السوريين تجاربهم بعد الوصول إلى الحدود اليونانية عبر صفحات معنية بشؤون اللاجئين السوريين في تركيا، حيث وصف أحدهم تجربته بالـ "صعبة والمذلة" ونصح السوريين بالامتناع عن الهجرة لأنه يشعر "بالندم". وعبر عن استياءه من "اللعب بالسوريين كأنهم ليسوا بشرا". وانتقد يوسف الشريف سياسية حزب العدالة والتنمية التركي الحاكم بما يتعلق بالتعامل مع اللاجئين السوريين، مشيراً إلى "التناقض" بين الفعل والاتفاقيات. وأضاف قائلاً "من جديد يدفع اللاجئ السوري ثمن السياسات الداخلية للحزب الحاكم". وفي السياق نفسه، انتقد فريق من المغردين الرئيس التركي أردوغان مشيرين إلى تحول اللاجئين السوريين في الخطاب التركي من "ضيوف" للبلاد، إلى "سلعة جاهزة للتصدير". في المقابل، وعقب نبأ مقتل الجنود الأتراك، تضامن قطاع من المغردين مع تركيا والرئيس التركي تحت وسم #كلنا_مع تركيا و #تركيا_ليست_وحدها. وبرر آخرون قرارات الحكومة التركية بإلإشارة إلى الأزمة الاقتصادية التي تعاني منها تركيا والاتفاقيات مع الاتحاد الأوروبي التي "لم تتحقق بعد". كما أشار البعض إلى مسؤولية المجتمع الدولي أمام الكارثة الإنسانية التي يتعرض لها الشمال السوري. ودعا الأزهر إلى "تغليب مصلحة الشعب السوري الذي تحمَّل ما لا تتحمله الجبال والنظر بعين الإنسانية والرحمة إلى ما آلت إليه الأوضاع في إدلب ومدن سورية أخرى
-        # """,
-        "[LANG_EN]  Who invented the telephone?",
-        "[LANG_EN] Translate this to Arabic: How can i play a game?",
-#         """
-# لخص النص التالي: يُنسب اختراع الهاتف إلى ألكسندر جراهام بيل. على الرغم من أن اختراعه لم يكن أول واحد من اخترع الهاتف قبل ذلك، إلا أن الفضل غالبًا ما يُنسب إليه الفضل في اختراع التليفون في عام 1876. ومع ذلك، فإن تاريخ الهاتف معقد، في عام 1936.
-#         """,
-#         "What is agile software development?",
-#         "Summarize the following text: Agile software development is an iterative and incremental approach to software development that emphasizes flexibility, collaboration, and customer satisfaction. Unlike traditional waterfall models, Agile methods embrace changing requirements throughout the project lifecycle.  Key characteristics include short development cycles (sprints), frequent releases, continuous feedback, self-organizing teams, and a focus on delivering working software as quickly as possible.  Popular Agile frameworks include Scrum and Kanban."
+        "[LANG_EN] Translate this to Arabic: What year did World War I begin?"
     ]
 
     # Example reference answers
     references = [
-        """
-        An amateur built light airplane has crashed in the central New South Wales town of Mudgee .
-        The plane was on its approach to land when the aircraft crashed into a paddock near the airport .
-        The pilot died on the plane while his only passenger died at the crash site .
-        """,
         "The French Revolution began in 1789.",
-        "في أي عام بدأت الحرب العالمية الأولى؟",
-        # """
-        # عادت قضية اللجوء السوري إلى أوروبا إلى الواجهة بعد إعلان تركيا فتح حدودها أمام اللاجئين للهروب باتجاه اليونان. وأثارت مقاطع مصورة تظهر لاجئين يستقلون حافلات مجانية الجدل بين المغردين حول استخدام أردوغان "السوريين كسلاح في وجه أوروبا"، بين مؤيد لسياسته في الشرق الأوسط عامة وسوريا تحديداً ومعارض لها.
-        # """,
-        "Alexander Graham Bell is credited with inventing the telephone. While others were working on similar concepts, Bell received the first patent for the device.",
-        # "في أي عام بدأت الحرب العالمية الأولى؟",
-        "كيف يمكنني لعب اللعبة؟"
-        # "يُنسب اختراع الهاتف إلى ألكسندر جراهام بيل.",
-        # "Agile software development is an iterative and incremental approach to software development that emphasizes flexibility, collaboration, and customer satisfaction. Unlike traditional waterfall models, Agile methods embrace changing requirements throughout the project lifecycle.  Key characteristics include short development cycles (sprints), frequent releases, continuous feedback, self-organizing teams, and a focus on delivering working software as quickly as possible.  Popular Agile frameworks include Scrum and Kanban.",
-        ""
+        "في أي عام بدأت الحرب العالمية الأولى؟"
     ]
 
     # Run batch evaluation
