@@ -1,6 +1,15 @@
+import re
+
+import pandas as pd
 import torch
 import torch.nn as nn
-from transformers import AutoTokenizer, get_cosine_schedule_with_warmup
+from datasets import Dataset, concatenate_datasets, load_dataset
+from transformers import (
+    AutoTokenizer,
+    get_cosine_schedule_with_warmup,
+    get_linear_schedule_with_warmup,
+    get_constant_schedule_with_warmup
+)
 import random
 import sys
 from tqdm import tqdm
@@ -17,6 +26,97 @@ import logging
 
 from model_architecture import Transformer
 from enhanced_training_code import train_model
+
+# Load tokenizer
+tokenizer = AutoTokenizer.from_pretrained("miscovery/tokenizer")
+
+
+#dataset
+# Token length filter function
+def is_within_limit(example, max_len=500):
+    en_total = tokenizer(example["prompt_en"], example["response_en"], truncation=False, add_special_tokens=True)
+    ar_total = tokenizer(example["prompt_ar"], example["response_ar"], truncation=False, add_special_tokens=True)
+    return len(en_total["input_ids"]) <= max_len and len(ar_total["input_ids"]) <= max_len
+
+
+# Function to replace \r\n with spaces
+def clean_text(text):
+    if isinstance(text, str):
+        return re.sub(r'\r\n', ' ', text)
+    return text
+
+
+# Load datasets
+ds = load_dataset("miscovery/Math_CoT_Arabic_English_Reasoning")["train"]
+
+# Load and merge CSVs
+csv1 = pd.read_csv("arithmatic_questions.csv")
+csv2 = pd.read_csv("arithmatic.csv")
+csv_combined = pd.concat([csv1, csv2]).reset_index(drop=True)
+
+# Ensure required columns exist
+required_cols = {"en_question", "ar_question", "en_answer", "ar_answer"}
+assert required_cols.issubset(set(csv_combined.columns)), "CSV is missing required columns"
+
+# Ensure answers are strings and clean \r\n
+csv_combined["en_answer"] = csv_combined["en_answer"].astype(str).apply(clean_text)
+csv_combined["ar_answer"] = csv_combined["ar_answer"].astype(str).apply(clean_text)
+csv_dataset = Dataset.from_pandas(csv_combined)
+
+# Convert base dataset answers to strings and clean \r\n
+ds = ds.map(lambda x: {
+    "en_answer": clean_text(str(x["en_answer"])),
+    "ar_answer": clean_text(str(x["ar_answer"]))
+}, batched=False)
+
+
+# Generate prompt/response pairs
+def to_prompt_response(example):
+    return {
+        "prompt_en": clean_text(f"{example['en_question']}"),
+        "response_en": clean_text(example["en_answer"]),
+        "prompt_ar": clean_text(f"{example['ar_question']}"),
+        "response_ar": clean_text(example["ar_answer"])
+    }
+
+
+# Apply transformation
+transformed_ds = ds.map(to_prompt_response)
+transformed_csv = csv_dataset.map(to_prompt_response)
+
+# Combine and filter by token length
+combined = concatenate_datasets([transformed_ds, transformed_csv])
+filtered_combined = combined.filter(is_within_limit)
+
+
+# Flatten to prompt/response only
+def flatten_bilingual_dataset(dataset):
+    prompts = []
+    for example in dataset:
+        prompts.append({
+            "prompt": example["prompt_en"],
+            "response": example["response_en"]
+        })
+        prompts.append({
+            "prompt": example["prompt_ar"],
+            "response": example["response_ar"]
+        })
+    return Dataset.from_list(prompts)
+
+
+final_dataset = flatten_bilingual_dataset(filtered_combined)
+
+# Shuffle and split
+final_dataset = final_dataset.shuffle(seed=42)
+val_size = max(1, int(0.01 * len(final_dataset)))
+val_dataset = final_dataset.select(range(val_size))
+train_dataset = final_dataset.select(range(val_size, len(final_dataset)))
+
+# Final structure
+raw_datasets = {
+    "train": train_dataset,
+    "test": val_dataset
+}
 
 
 def create_tensor_datasets(prompts, responses, tokenizer, max_length=512, cache_file=None):
@@ -176,7 +276,7 @@ def main(args):
         optimizer,
         num_warmup_steps=args.warmup_steps,
         num_training_steps=100000,
-        min_lr_ratio=0.1
+        # min_lr_ratio=0.1
     )
 
     # Load pre-trained model from Stage 1
@@ -196,20 +296,20 @@ def main(args):
     os.makedirs(cache_dir, exist_ok=True)
 
     dataset = create_tensor_datasets(
-        # raw_datasets['train']['prompt'],
-        # raw_datasets['train']['response'],
-        None,
-        None,
+        raw_datasets['train']['prompt'],
+        raw_datasets['train']['response'],
+        # None,
+        # None,
         tokenizer,
         max_length=args.max_seq_length,
         cache_file=train_cache_file
     )
 
     test_dataset = create_tensor_datasets(
-        # raw_datasets['test']['prompt'],
-        # raw_datasets['test']['response'],
-        None,
-        None,
+        raw_datasets['test']['prompt'],
+        raw_datasets['test']['response'],
+        # None,
+        # None,
         tokenizer,
         max_length=args.max_seq_length,
         cache_file=test_cache_file
@@ -242,12 +342,40 @@ def main(args):
     # Update scheduler with actual training steps
     total_steps = len(train_dataloader) * args.num_epochs // args.gradient_accumulation_steps
 
-    scheduler = get_cosine_schedule_with_warmup(
-        optimizer,
-        num_warmup_steps=args.warmup_steps,
-        num_training_steps=total_steps,
-        min_lr_ratio=0.1
-    )
+    # Calculate warmup steps as a ratio of total training steps
+    if args.lr_warmup_ratio > 0:
+        args.warmup_steps = int(total_steps * args.lr_warmup_ratio)
+    else:
+        args.warmup_steps = args.warmup_steps  # Use the existing value
+
+    # Initialize the appropriate scheduler based on type
+    if args.lr_scheduler_type == "cosine":
+        scheduler = get_cosine_schedule_with_warmup(
+            optimizer,
+            num_warmup_steps=args.warmup_steps,
+            num_training_steps=total_steps,
+            # min_lr_ratio=args.min_lr_ratio
+        )
+    elif args.lr_scheduler_type == "linear":
+        scheduler = get_linear_schedule_with_warmup(
+            optimizer,
+            num_warmup_steps=args.warmup_steps,
+            num_training_steps=total_steps
+        )
+    elif args.lr_scheduler_type == "constant":
+        scheduler = get_constant_schedule_with_warmup(
+            optimizer,
+            num_warmup_steps=args.warmup_steps
+        )
+    elif args.lr_scheduler_type == "polynomial":
+        from transformers import get_polynomial_decay_schedule_with_warmup
+        scheduler = get_polynomial_decay_schedule_with_warmup(
+            optimizer,
+            num_warmup_steps=args.warmup_steps,
+            num_training_steps=total_steps,
+            lr_end=args.learning_rate * args.min_lr_ratio,
+            power=1.0
+        )
 
     # Initialize loss function with label smoothing
     criterion = nn.CrossEntropyLoss(
@@ -301,23 +429,23 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Fine-tune pre-trained model on downstream tasks")
 
     # Model parameters
-    parser.add_argument("--d_model", type=int, default=768, help="Model dimension")
-    parser.add_argument("--num_heads", type=int, default=12, help="Number of attention heads")
-    parser.add_argument("--d_ff", type=int, default=3072, help="Feed-forward dimension")
-    parser.add_argument("--num_encoder_layers", type=int, default=12, help="Number of encoder layers")
-    parser.add_argument("--num_decoder_layers", type=int, default=12, help="Number of decoder layers")
-    parser.add_argument("--max_seq_length", type=int, default=512, help="Maximum sequence length")
+    parser.add_argument("--d_model", type=int, default=512, help="Model dimension")
+    parser.add_argument("--num_heads", type=int, default=8, help="Number of attention heads")
+    parser.add_argument("--d_ff", type=int, default=2048, help="Feed-forward dimension")
+    parser.add_argument("--num_encoder_layers", type=int, default=8, help="Number of encoder layers")
+    parser.add_argument("--num_decoder_layers", type=int, default=8, help="Number of decoder layers")
+    parser.add_argument("--max_seq_length", type=int, default=256, help="Maximum sequence length")
     parser.add_argument("--dropout", type=float, default=0.1, help="Dropout rate")
 
     # Training parameters
-    parser.add_argument("--batch_size", type=int, default=12, help="Batch size")
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=6, help="Gradient accumulation steps")
+    parser.add_argument("--batch_size", type=int, default=4, help="Batch size")
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=2, help="Gradient accumulation steps")
     parser.add_argument("--learning_rate", type=float, default=2e-5, help="Learning rate for fine-tuning")
     parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay")
-    parser.add_argument("--warmup_steps", type=int, default=1000, help="Warmup steps")
+    parser.add_argument("--warmup_steps", type=int, default=1, help="Warmup steps")
     parser.add_argument("--num_epochs", type=int, default=10, help="Number of epochs")
-    parser.add_argument("--eval_steps", type=int, default=5600, help="Evaluation steps")
-    parser.add_argument("--save_steps", type=int, default=40000, help="Save steps")
+    parser.add_argument("--eval_steps", type=int, default=1300, help="Evaluation steps")
+    parser.add_argument("--save_steps", type=int, default=1500, help="Save steps")
     parser.add_argument("--early_stopping_patience", type=int, default=5, help="Early stopping patience")
     parser.add_argument("--max_checkpoints", type=int, default=2, help="Maximum number of checkpoints to keep")
     parser.add_argument("--label_smoothing", type=float, default=0.1, help="Label smoothing value")
@@ -329,12 +457,25 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--tokenizer_name", type=str, default="miscovery/tokenizer", help="Tokenizer name or path")
     parser.add_argument("--checkpoint_path", type=str,
-                        default="stage_01/output/checkpoints/best_model.pth",
+                        default="stage_01/output/checkpoints/checkpoint_step_65.pth",
                         help="Path to pre-trained checkpoint from Stage 1")
     parser.add_argument("--output_dir", type=str, default="stage_02/output",
                         help="Output directory")
-    parser.add_argument("--cache_dir", type=str, default="stage_02/cache",
+    parser.add_argument("--cache_dir", type=str, default="stage_01/cache",
                         help="Cache directory")
+
+    # Add these to the argument parser in finetune.py
+    parser.add_argument("--lr_scheduler_type", type=str, default="cosine",
+                        choices=["cosine", "linear", "constant", "polynomial"],
+                        help="Learning rate scheduler type")
+    parser.add_argument("--lr_decay_factor", type=float, default=0.1,
+                        help="Factor to reduce LR by when using step scheduler")
+    parser.add_argument("--lr_step_size", type=int, default=1000,
+                        help="Number of steps between LR decreases in step scheduler")
+    parser.add_argument("--min_lr_ratio", type=float, default=0.1,
+                        help="Minimum learning rate as a fraction of initial LR")
+    parser.add_argument("--lr_warmup_ratio", type=float, default=0.1,
+                        help="Portion of training to use for warmup (as a ratio of total steps)")
 
     args, unknown = parser.parse_known_args()
 

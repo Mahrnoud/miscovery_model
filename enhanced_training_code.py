@@ -227,6 +227,12 @@ def train_model(model, train_dataloader, test_dataloader, criterion, optimizer, 
                 scaler.update()
                 scheduler.step()
 
+                # In enhanced_training_code.py, inside the train_model function
+                # In the batch loop, after scheduler.step(), add:
+                if global_step % 100 == 0:
+                    current_lr = scheduler.get_last_lr()[0]
+                    print(f"\nStep {global_step} - Current learning rate: {current_lr:.7f}")
+
                 # Update EMA if enabled
                 if ema is not None:
                     ema.update()
