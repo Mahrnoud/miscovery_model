@@ -92,6 +92,158 @@ def get_cosine_schedule_with_warmup(optimizer, num_warmup_steps, num_training_st
     return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda, last_epoch=last_epoch)
 
 
+def save_checkpoint_optimized(model, optimizer, scheduler, epoch, loss, val_loss, checkpoint_dir,
+                              step=None, is_best=False, is_final=False, max_checkpoints=3, metrics=None,
+                              save_optimizer=True, use_cpu_offload=False, use_async=False):
+    """
+    Memory-efficient checkpoint saving with CPU offloading and async options
+
+    Args:
+        model: Model to save
+        optimizer: Optimizer to save (optional if save_optimizer=False)
+        scheduler: Scheduler to save (optional if save_optimizer=False)
+        epoch: Current epoch number
+        loss: Current loss value
+        val_loss: Validation loss value
+        checkpoint_dir: Directory to save checkpoints
+        step: Current step number (optional)
+        is_best: Whether this is the best model so far
+        is_final: Whether this is the final model
+        max_checkpoints: Maximum number of checkpoints to keep
+        metrics: Additional metrics to save (optional)
+        save_optimizer: Whether to save optimizer and scheduler (False for smaller checkpoints)
+        use_cpu_offload: Whether to offload tensors to CPU before saving
+        use_async: Whether to save checkpoint asynchronously (experimental)
+    """
+    import os
+    import glob
+    import re
+    import threading
+    import copy
+
+    os.makedirs(checkpoint_dir, exist_ok=True)
+
+    # Create a minimal or full checkpoint depending on configuration
+    if save_optimizer:
+        checkpoint = {
+            'epoch': epoch,
+            'step': step,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict() if optimizer else None,
+            'scheduler_state_dict': scheduler.state_dict() if scheduler else None,
+            'train_loss': loss,
+            'val_loss': val_loss
+        }
+    else:
+        # Model-only checkpoint (smaller size)
+        checkpoint = {
+            'epoch': epoch,
+            'step': step,
+            'model_state_dict': model.state_dict(),
+            'train_loss': loss,
+            'val_loss': val_loss
+        }
+
+    # Add metrics if provided (exclude large sample data)
+    if metrics is not None:
+        for key, value in metrics.items():
+            if key not in checkpoint and key != 'samples':
+                # Convert NumPy values to Python native types for JSON serialization
+                if hasattr(value, 'item'):
+                    value = value.item()  # Convert PyTorch tensor to Python scalar
+                elif hasattr(value, 'tolist'):
+                    value = value.tolist()  # Convert NumPy array to list
+                checkpoint[f'metric_{key}'] = value
+
+    # CPU offloading for reduced GPU memory pressure
+    if use_cpu_offload and torch.cuda.is_available():
+        # Create a new state dict with CPU tensors
+        original_state_dict = checkpoint['model_state_dict']
+        cpu_state_dict = {k: v.cpu() for k, v in original_state_dict.items()}
+        checkpoint['model_state_dict'] = cpu_state_dict
+
+        # Also move optimizer states to CPU if present
+        if save_optimizer and 'optimizer_state_dict' in checkpoint and checkpoint['optimizer_state_dict']:
+            # Handle the optimizer state dict structure
+            optimizer_dict = checkpoint['optimizer_state_dict']
+            for param_group in optimizer_dict['param_groups']:
+                for param_id in param_group['params']:
+                    if param_id in optimizer_dict['state']:
+                        for k, v in optimizer_dict['state'][param_id].items():
+                            if torch.is_tensor(v):
+                                optimizer_dict['state'][param_id][k] = v.cpu()
+
+    # Define save function for either direct or async saving
+    def _save_checkpoint(checkpoint, path):
+        torch.save(checkpoint, path)
+        print(f"Saved checkpoint: {path}")
+
+    # Define cleanup function for old checkpoints
+    def _cleanup_old_checkpoints(checkpoint_pattern, max_to_keep):
+        checkpoint_files = glob.glob(checkpoint_pattern)
+        if len(checkpoint_files) <= max_to_keep:
+            return
+
+        # Extract numbers and sort
+        numbered_files = []
+        for file_path in checkpoint_files:
+            match = re.search(r'(\d+)\.pth', file_path)
+            if match:
+                numbered_files.append((int(match.group(1)), file_path))
+
+        # Keep newest, delete oldest
+        numbered_files.sort(reverse=True)
+        for _, file_path in numbered_files[max_to_keep:]:
+            try:
+                os.remove(file_path)
+                print(f"Removed old checkpoint: {file_path}")
+            except Exception as e:
+                print(f"Error removing checkpoint {file_path}: {e}")
+
+    # Save checkpoints based on type
+    paths_to_save = []
+
+    # Final model
+    if is_final:
+        paths_to_save.append(f"{checkpoint_dir}/model_final.pth")
+
+    # Best model
+    if is_best:
+        paths_to_save.append(f"{checkpoint_dir}/best_model.pth")
+
+    # Step or epoch checkpoint
+    if step is not None:
+        paths_to_save.append(f"{checkpoint_dir}/checkpoint_step_{step}.pth")
+        cleanup_pattern = f"{checkpoint_dir}/checkpoint_step_*.pth"
+    else:
+        paths_to_save.append(f"{checkpoint_dir}/checkpoint_epoch_{epoch + 1}.pth")
+        cleanup_pattern = f"{checkpoint_dir}/checkpoint_epoch_*.pth"
+
+    # Save the checkpoint(s)
+    if use_async and not is_best and not is_final:
+        # Only use async for regular checkpoints, not best or final
+        # Copy the checkpoint to avoid race conditions
+        checkpoint_copy = copy.deepcopy(checkpoint)
+        for path in paths_to_save:
+            threading.Thread(
+                target=_save_checkpoint,
+                args=(checkpoint_copy, path)
+            ).start()
+
+        # Clean up in background too
+        threading.Thread(
+            target=_cleanup_old_checkpoints,
+            args=(cleanup_pattern, max_checkpoints)
+        ).start()
+    else:
+        # Synchronous saving for important checkpoints
+        for path in paths_to_save:
+            _save_checkpoint(checkpoint, path)
+
+        # Clean up old checkpoints
+        _cleanup_old_checkpoints(cleanup_pattern, max_checkpoints)
+
+
 class EMA:
     """
     Exponential Moving Average for model parameters
@@ -150,6 +302,7 @@ def train_model(model, train_dataloader, test_dataloader, criterion, optimizer, 
     - Exponential Moving Average
     - Improved gradient clipping
     - Better logging
+    - Enhanced evaluation
     """
     model.train()
     best_val_loss = float('inf')
@@ -245,10 +398,9 @@ def train_model(model, train_dataloader, test_dataloader, criterion, optimizer, 
                 scheduler.step()
 
                 # Add this line to track metrics
-                eval_callback.on_step_end(global_step, loss.item(), optimizer)
+                eval_callback.on_step_end(global_step, loss.item() * gradient_accumulation_steps, optimizer)
 
-                # In enhanced_training_code.py, inside the train_model function
-                # In the batch loop, after scheduler.step(), add:
+                # Log learning rate periodically
                 if global_step % 100 == 0:
                     current_lr = scheduler.get_last_lr()[0]
                     print(f"\nStep {global_step} - Current learning rate: {current_lr:.7f}")
@@ -264,6 +416,7 @@ def train_model(model, train_dataloader, test_dataloader, criterion, optimizer, 
                 learning_rates.append(current_lr)
                 train_losses.append(loss.item() * gradient_accumulation_steps)
 
+                # Evaluation at specified steps
                 if global_step % eval_steps == 0:
                     # Generate a new seed for each evaluation
                     eval_seed = random.randint(0, 10000)
@@ -277,10 +430,46 @@ def train_model(model, train_dataloader, test_dataloader, criterion, optimizer, 
                     if ema is not None:
                         ema.apply_shadow()
 
+                    # Use evaluation from eval_callback
+                    eval_callback.on_evaluation(global_step)
+
+                    # Get evaluation metrics from the callback
+                    avg_val_loss = 0.0  # Default value if not available
+                    if eval_callback.val_losses and len(eval_callback.val_losses) > 0:
+                        avg_val_loss = eval_callback.val_losses[-1]
+
+                    # Check for best model
+                    is_best = False
+                    if avg_val_loss < best_val_loss:
+                        print(f"Validation loss improved ({best_val_loss:.4f} --> {avg_val_loss:.4f})")
+                        best_val_loss = avg_val_loss
+                        steps_since_last_improvement = 0
+                        is_best = True
+                    else:
+                        steps_since_last_improvement += 1
+                        print(f"Validation loss did not improve ({avg_val_loss:.4f} vs best {best_val_loss:.4f}). "
+                              f"Patience: {steps_since_last_improvement}/{early_stopping_patience}")
+
                     # Restore original weights if EMA was applied
                     if ema is not None:
                         ema.restore()
 
+                    # Save checkpoint
+                    save_checkpoint_optimized(
+                        model=model,
+                        optimizer=optimizer,
+                        scheduler=scheduler,
+                        epoch=epoch,
+                        loss=loss.item() * gradient_accumulation_steps,
+                        val_loss=avg_val_loss,
+                        checkpoint_dir=checkpoint_dir,
+                        step=global_step,
+                        is_best=is_best,
+                        save_optimizer=True,
+                        max_checkpoints=max_checkpoints
+                    )
+
+                    # Check early stopping
                     if early_stopping_patience > 0 and steps_since_last_improvement >= early_stopping_patience:
                         print(
                             f"\nEarly stopping triggered after {early_stopping_patience} evaluation steps without improvement.")
@@ -289,8 +478,22 @@ def train_model(model, train_dataloader, test_dataloader, criterion, optimizer, 
 
                     model.train()
 
-                    # For regular checkpoints
-
+                # Regular checkpoint saving at specified steps
+                elif global_step % save_steps == 0:
+                    save_checkpoint_optimized(
+                        model=model,
+                        optimizer=optimizer,
+                        scheduler=scheduler,
+                        epoch=epoch,
+                        loss=loss.item() * gradient_accumulation_steps,
+                        val_loss=None,  # No validation loss for regular checkpoint
+                        checkpoint_dir=checkpoint_dir,
+                        step=global_step,
+                        is_best=False,
+                        save_optimizer=False,
+                        use_async=True,
+                        max_checkpoints=max_checkpoints
+                    )
                     print(f"\nRegular checkpoint saved at step {global_step}")
 
             total_loss += loss.item() * gradient_accumulation_steps
@@ -306,6 +509,23 @@ def train_model(model, train_dataloader, test_dataloader, criterion, optimizer, 
         avg_loss = total_loss / len(train_dataloader)
         print(f"\nEpoch {epoch + 1}/{epochs} completed in {epoch_time:.2f}s. Average Train Loss: {avg_loss:.4f}")
 
+        # Save epoch checkpoint
+        save_checkpoint_optimized(
+            model=model,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            epoch=epoch,
+            loss=avg_loss,
+            val_loss=None,  # No validation loss for epoch checkpoint
+            checkpoint_dir=checkpoint_dir,
+            step=global_step,
+            is_best=False,
+            is_final=False,
+            save_optimizer=True,
+            max_checkpoints=max_checkpoints
+        )
+        print(f"Epoch {epoch + 1} checkpoint saved")
+
         if early_stop_triggered:
             print("Exiting training loop due to early stopping.")
             break
@@ -318,6 +538,23 @@ def train_model(model, train_dataloader, test_dataloader, criterion, optimizer, 
     # Save the final model
     if ema is not None:
         ema.apply_shadow()
+
+    save_checkpoint_optimized(
+        model=model,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        epoch=epochs - 1,
+        loss=avg_loss,
+        val_loss=best_val_loss,
+        checkpoint_dir=checkpoint_dir,
+        step=global_step,
+        is_best=False,
+        is_final=True,
+        max_checkpoints=max_checkpoints,
+        save_optimizer=True,
+        use_async=False  # Don't use async for final important checkpoint
+    )
+    print(f"Final model saved to {checkpoint_dir}/model_final.pth")
 
     if ema is not None:
         ema.restore()
