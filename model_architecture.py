@@ -487,7 +487,7 @@ class CustomTransformerModel(PreTrainedModel, GenerationMixin):
             self,
             prompt,
             tokenizer,
-            max_length=512,
+            max_length=256,
             device='cuda',
             temperature=1.0,
             top_k=50,
@@ -503,7 +503,7 @@ class CustomTransformerModel(PreTrainedModel, GenerationMixin):
         input_ids = tokenizer(
             prompt,
             return_tensors="pt",
-            max_length=512,
+            max_length=256,
             padding='max_length',
             truncation=True
         )["input_ids"].to(device)
