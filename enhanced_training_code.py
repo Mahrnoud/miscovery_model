@@ -7,9 +7,6 @@ import torch
 import torch.nn as nn
 from tqdm import tqdm
 
-# from enhanced_evaluation_code import save_checkpoint_optimized, evaluate_model_optimized
-
-
 # Import enhanced evaluation
 from enhanced_evaluation import (
     EvaluationCallback,
