@@ -2,13 +2,21 @@ import math
 import os
 import random
 import time
-from datetime import datetime
 
 import torch
 import torch.nn as nn
 from tqdm import tqdm
 
-from enhanced_evaluation_code import save_checkpoint_optimized, evaluate_model_optimized
+# from enhanced_evaluation_code import save_checkpoint_optimized, evaluate_model_optimized
+
+
+# Import enhanced evaluation
+from enhanced_evaluation import (
+    EvaluationCallback,
+    greedy_decode,
+    sample_decode,
+    plot_training_history
+)
 
 import rouge
 import nltk
@@ -181,6 +189,18 @@ def train_model(model, train_dataloader, test_dataloader, criterion, optimizer, 
     val_losses = []
     learning_rates = []
 
+    # Initialize the evaluation callback
+    eval_callback = EvaluationCallback(
+        model=model,
+        tokenizer=tokenizer,
+        eval_dataloader=test_dataloader,
+        device=device,
+        output_dir=os.path.join(checkpoint_dir, "eval_results"),
+        eval_steps=eval_steps,
+        save_best_model=True,
+        handle_arabic=True  # Enable Arabic-specific processing
+    )
+
     for epoch in range(start_epoch, epochs):
         total_loss = 0
         optimizer.zero_grad()
@@ -227,6 +247,9 @@ def train_model(model, train_dataloader, test_dataloader, criterion, optimizer, 
                 scaler.update()
                 scheduler.step()
 
+                # Add this line to track metrics
+                eval_callback.on_step_end(global_step, loss.item(), optimizer)
+
                 # In enhanced_training_code.py, inside the train_model function
                 # In the batch loop, after scheduler.step(), add:
                 if global_step % 100 == 0:
@@ -257,67 +280,9 @@ def train_model(model, train_dataloader, test_dataloader, criterion, optimizer, 
                     if ema is not None:
                         ema.apply_shadow()
 
-                    eval_metrics = evaluate_model_optimized(
-                        model,
-                        test_dataloader,
-                        criterion,
-                        device,
-                        tokenizer=tokenizer,
-                        generate_samples=(global_step % (eval_steps * 2) == 0),
-                        num_samples=2,
-                        max_batches_per_eval=50,
-                        seed=eval_seed,
-                        label_smoothing=label_smoothing
-                    )
-
                     # Restore original weights if EMA was applied
                     if ema is not None:
                         ema.restore()
-
-                    avg_val_loss = eval_metrics['val_loss']
-                    perplexity = eval_metrics['perplexity']
-                    val_losses.append(avg_val_loss)
-
-                    print(f"\n{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Step {global_step} Eval:"
-                          f" Val Loss: {avg_val_loss:.4f}, Perplexity: {perplexity:.4f}")
-
-                    # Log metrics from evaluation if available
-                    if 'rouge' in eval_metrics:
-                        print(f"ROUGE scores: {eval_metrics['rouge']}")
-                    if 'bleu' in eval_metrics:
-                        print(f"BLEU score: {eval_metrics['bleu']:.4f}")
-
-                    is_best = avg_val_loss < best_val_loss
-                    # For best model checkpoint (when validation loss improves)
-                    if is_best:
-                        print(
-                            f"Validation loss improved ({best_val_loss:.4f} --> {avg_val_loss:.4f}). Saving best model.")
-                        best_val_loss = avg_val_loss
-                        steps_since_last_improvement = 0
-
-                        # Apply EMA if enabled
-                        if ema is not None:
-                            ema.apply_shadow()
-
-                        # Use the optimized function with proper parameters
-                        save_checkpoint_optimized(
-                            model, optimizer, scheduler, epoch, loss.item() * gradient_accumulation_steps,
-                            avg_val_loss, checkpoint_dir,
-                            step=global_step, is_best=True,  # Set is_best to True
-                            save_optimizer=True,  # Save optimizer state for best model
-                            use_cpu_offload=False,
-                            use_async=False,  # Don't use async for best model
-                            metrics=eval_metrics  # Pass metrics
-                        )
-
-                        if ema is not None:
-                            ema.restore()
-
-                        print(f"Best model checkpoint saved at step {global_step}")
-                    elif early_stopping_patience > 0:
-                        steps_since_last_improvement += 1
-                        print(f"Validation loss did not improve ({avg_val_loss:.4f} vs best {best_val_loss:.4f}). "
-                              f"Patience: {steps_since_last_improvement}/{early_stopping_patience}")
 
                     if early_stopping_patience > 0 and steps_since_last_improvement >= early_stopping_patience:
                         print(
@@ -327,18 +292,7 @@ def train_model(model, train_dataloader, test_dataloader, criterion, optimizer, 
 
                     model.train()
 
-                # For regular checkpoints
-                if global_step % save_steps == 0 and not (global_step % eval_steps == 0 and is_best):
-                    current_val_loss = avg_val_loss if global_step % eval_steps == 0 else None
-
-                    save_checkpoint_optimized(
-                        model, optimizer, scheduler, epoch, loss.item() * gradient_accumulation_steps,
-                        current_val_loss, checkpoint_dir,
-                        step=global_step, is_best=False,
-                        save_optimizer=False,  # Don't need optimizer for regular checkpoints
-                        use_cpu_offload=False,
-                        use_async=True
-                    )
+                    # For regular checkpoints
 
                     print(f"\nRegular checkpoint saved at step {global_step}")
 
@@ -359,23 +313,24 @@ def train_model(model, train_dataloader, test_dataloader, criterion, optimizer, 
             print("Exiting training loop due to early stopping.")
             break
 
+    # At the end of training
+    eval_callback.on_training_end()
+
     print("Training finished.")
 
     # Save the final model
     if ema is not None:
         ema.apply_shadow()
 
-    save_checkpoint_optimized(
-        model, optimizer, scheduler, epochs - 1, avg_loss,
-        best_val_loss, checkpoint_dir,
-        step=global_step, is_best=False, is_final=True,
-        max_checkpoints=max_checkpoints,
-        save_optimizer=True,  # Include optimizer for final model
-        use_cpu_offload=False,
-        use_async=False  # Don't use async for final important checkpoint
-    )
-
     if ema is not None:
         ema.restore()
+
+    # Create final training vs validation plot
+    plot_training_history(
+        train_losses=eval_callback.train_losses,
+        val_losses=eval_callback.val_losses,
+        lr_history=eval_callback.lr_history,
+        output_dir=checkpoint_dir
+    )
 
     return model
