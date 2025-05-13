@@ -471,7 +471,8 @@ class EvaluationCallback:
             output_dir="eval_results",
             eval_steps=1000,
             save_best_model=True,
-            handle_arabic=True
+            handle_arabic=True,
+            max_eval_samples=3  # Added parameter to control number of evaluation samples
     ):
         """
         Initialize the callback
@@ -485,6 +486,7 @@ class EvaluationCallback:
             eval_steps: Number of training steps between evaluations
             save_best_model: Whether to save the best model
             handle_arabic: Whether to apply Arabic-specific processing
+            max_eval_samples: Maximum number of samples to evaluate
         """
         self.model = model
         self.tokenizer = tokenizer
@@ -494,6 +496,7 @@ class EvaluationCallback:
         self.eval_steps = eval_steps
         self.save_best_model = save_best_model
         self.handle_arabic = handle_arabic
+        self.max_eval_samples = max_eval_samples
 
         # Create output directory
         os.makedirs(output_dir, exist_ok=True)
@@ -560,11 +563,35 @@ class EvaluationCallback:
 
         eval_config = EvalConfig(handle_arabic=self.handle_arabic)
 
+        # Create a limited evaluation dataloader with max_eval_samples
+        from torch.utils.data import Subset
+        import random
+
+        # Sample a subset of evaluation data if needed
+        limited_eval_dataloader = self.eval_dataloader
+        if hasattr(self, 'max_eval_samples') and self.max_eval_samples and self.max_eval_samples < len(
+                self.eval_dataloader.dataset):
+            # Get random indices
+            indices = random.sample(range(len(self.eval_dataloader.dataset)), self.max_eval_samples)
+
+            # Create a subset dataset
+            subset_dataset = Subset(self.eval_dataloader.dataset, indices)
+
+            # Create a new dataloader with the subset
+            batch_size = self.eval_dataloader.batch_size or 1
+            from torch.utils.data import DataLoader
+            limited_eval_dataloader = DataLoader(
+                subset_dataset,
+                batch_size=batch_size,
+                shuffle=False
+            )
+            logger.info(f"Evaluating on {self.max_eval_samples} samples instead of {len(self.eval_dataloader.dataset)}")
+
         # Run evaluation
         eval_output_dir = os.path.join(self.output_dir, f"step_{step}")
         eval_summary, detailed_results = evaluate_model(
             model=self.model,
-            dataloader=self.eval_dataloader,
+            dataloader=limited_eval_dataloader,
             tokenizer=self.tokenizer,
             device=self.device,
             config=eval_config,

@@ -348,7 +348,8 @@ def train_model(model, train_dataloader, test_dataloader, criterion, optimizer, 
         output_dir=os.path.join(checkpoint_dir, "eval_results"),
         eval_steps=eval_steps,
         save_best_model=True,
-        handle_arabic=True  # Enable Arabic-specific processing
+        handle_arabic=True,  # Enable Arabic-specific processing
+        max_eval_samples=3  # Limit to 3 evaluation samples
     )
 
     for epoch in range(start_epoch, epochs):
