@@ -34,6 +34,10 @@ def analyze_errors(results, output_dir=None, lang="both"):
 
         # Skip if exact match or very high similarity
         exact_match_score = result.get('exact_match', 0)
+        # Convert NumPy value to Python float if needed
+        if isinstance(exact_match_score, (np.float32, np.float64)):
+            exact_match_score = float(exact_match_score)
+
         if exact_match_score > 0.9:
             continue
 
@@ -619,9 +623,17 @@ class EvaluationCallback:
         logger.info(f"Training complete. Best model at step {self.best_step} with BLEU {self.best_bleu:.4f}")
 
     def _save_history(self):
-        """Save training history to file"""
+        """Save training history to file, ensuring all values are JSON-serializable"""
+        json_safe_history = {}
+
+        for key, values in self.history.items():
+            # Convert any NumPy types to Python native types
+            json_safe_history[key] = [float(v) if isinstance(v, (np.float32, np.float64, np.int32, np.int64)) else v
+                                      for v in values]
+
+        # Save to file
         with open(self.history_file, 'w', encoding='utf-8') as f:
-            json.dump(self.history, f, ensure_ascii=False, indent=2)
+            json.dump(json_safe_history, f, ensure_ascii=False, indent=2)
 
 
 # ==========================================
@@ -728,6 +740,7 @@ from collections import defaultdict
 from difflib import SequenceMatcher
 
 import torch
+# Add numpy import at the top of the file if not already present
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -1627,13 +1640,36 @@ def evaluate_model(model, dataloader, tokenizer, device, config, output_dir=None
 
     # Save results if output directory is provided
     if output_dir:
+        # Convert NumPy values to Python native types for JSON serialization
+        json_safe_summary = {}
+        for k, v in evaluation_summary.items():
+            if isinstance(v, dict):
+                json_safe_summary[k] = {
+                    kk: float(vv) if isinstance(vv, (np.float32, np.float64, np.int32, np.int64)) else vv
+                    for kk, vv in v.items()}
+            elif isinstance(v, (np.float32, np.float64, np.int32, np.int64)):
+                json_safe_summary[k] = float(v)
+            else:
+                json_safe_summary[k] = v
+
         # Save summary
         with open(results_file, 'w', encoding='utf-8') as f:
-            json.dump(evaluation_summary, f, ensure_ascii=False, indent=2)
+            json.dump(json_safe_summary, f, ensure_ascii=False, indent=2)
+
+        # Make detailed results JSON-serializable
+        json_safe_results = []
+        for result in detailed_results:
+            json_safe_result = {}
+            for k, v in result.items():
+                if isinstance(v, (np.float32, np.float64, np.int32, np.int64)):
+                    json_safe_result[k] = float(v)
+                else:
+                    json_safe_result[k] = v
+            json_safe_results.append(json_safe_result)
 
         # Save detailed results
         with open(detailed_file, 'w', encoding='utf-8') as f:
-            json.dump(detailed_results, f, ensure_ascii=False, indent=2)
+            json.dump(json_safe_results, f, ensure_ascii=False, indent=2)
 
         logger.info(f"Evaluation results saved to {output_dir}")
 
