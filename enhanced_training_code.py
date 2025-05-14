@@ -2,6 +2,7 @@ import math
 import os
 import random
 import time
+import gc
 
 import torch
 import torch.nn as nn
@@ -287,13 +288,13 @@ def train_model(model, train_dataloader, test_dataloader, criterion, optimizer, 
                 checkpoint_dir="models/checkpoints",
                 eval_steps=3500,
                 save_steps=5000,
-                early_stopping_patience=10,  # Increased from 5
+                early_stopping_patience=10,
                 tokenizer=None,
-                max_checkpoints=3,  # Increased from 2
+                max_checkpoints=3,
                 label_smoothing=0.1,
                 weight_decay=0.01,
                 max_grad_norm=1.0,
-                ema_decay=0.9999  # Added EMA
+                ema_decay=0.9999
                 ):
     """
     Enhanced training function with additional features:
@@ -303,6 +304,7 @@ def train_model(model, train_dataloader, test_dataloader, criterion, optimizer, 
     - Improved gradient clipping
     - Better logging
     - Enhanced evaluation
+    - Memory leak fixes
     """
     model.train()
     best_val_loss = float('inf')
@@ -348,8 +350,8 @@ def train_model(model, train_dataloader, test_dataloader, criterion, optimizer, 
         output_dir=os.path.join(checkpoint_dir, "eval_results"),
         eval_steps=eval_steps,
         save_best_model=True,
-        handle_arabic=True,  # Enable Arabic-specific processing
-        max_eval_samples=3  # Limit to 3 evaluation samples
+        handle_arabic=True,
+        max_eval_samples=3
     )
 
     for epoch in range(start_epoch, epochs):
@@ -431,6 +433,9 @@ def train_model(model, train_dataloader, test_dataloader, criterion, optimizer, 
                     if ema is not None:
                         ema.apply_shadow()
 
+                    # Explicitly set model to eval mode
+                    model.eval()
+
                     # Use evaluation from eval_callback
                     eval_callback.on_evaluation(global_step)
 
@@ -477,7 +482,15 @@ def train_model(model, train_dataloader, test_dataloader, criterion, optimizer, 
                         early_stop_triggered = True
                         break
 
+                    # Set model back to train mode
                     model.train()
+
+                    # Clear CUDA cache after evaluation to prevent memory leaks
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+
+                    # Force garbage collection
+                    gc.collect()
 
                 # Regular checkpoint saving at specified steps
                 elif global_step % save_steps == 0:
@@ -527,6 +540,11 @@ def train_model(model, train_dataloader, test_dataloader, criterion, optimizer, 
         )
         print(f"Epoch {epoch + 1} checkpoint saved")
 
+        # Clear CUDA cache at the end of each epoch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        gc.collect()
+
         if early_stop_triggered:
             print("Exiting training loop due to early stopping.")
             break
@@ -567,5 +585,10 @@ def train_model(model, train_dataloader, test_dataloader, criterion, optimizer, 
         lr_history=eval_callback.lr_history,
         output_dir=checkpoint_dir
     )
+
+    # Final memory cleanup
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    gc.collect()
 
     return model

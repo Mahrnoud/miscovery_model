@@ -1,3 +1,4 @@
+import gc
 import re
 
 import pandas as pd
@@ -120,11 +121,17 @@ raw_datasets = {
 
 
 def create_tensor_datasets(prompts, responses, tokenizer, max_length=256, cache_file=None):
+    """
+    Create tensor datasets with better memory management
+    """
+    import gc
+    import torch
+
     # First check if we should load from cache
     if cache_file and os.path.exists(cache_file):
         logger.info(f"Loading preprocessed tensors from {cache_file}")
         try:
-            return torch.load(cache_file)
+            return torch.load(cache_file, map_location='cpu')  # Load to CPU first
         except Exception as e:
             logger.warning(f"Error loading cache file: {e}")
             logger.info("Falling back to processing data from scratch")
@@ -133,25 +140,39 @@ def create_tensor_datasets(prompts, responses, tokenizer, max_length=256, cache_
     input_tensors = []
     target_tensors = []
 
-    for p, r in tqdm(zip(prompts, responses), total=len(prompts), desc="Creating tensors"):
-        input_encoding = tokenizer(
-            p,
-            max_length=max_length,
-            padding='max_length',
-            truncation=True,
-            return_tensors="pt",
-            add_special_tokens=True
-        )
-        target_encoding = tokenizer(
-            r,
-            max_length=max_length,
-            padding='max_length',
-            truncation=True,
-            return_tensors="pt",
-            add_special_tokens=True
-        )
-        input_tensors.append(input_encoding["input_ids"].squeeze(0))
-        target_tensors.append(target_encoding["input_ids"].squeeze(0))
+    # Process in batches to avoid memory issues
+    batch_size = 100
+    num_samples = len(prompts)
+
+    for batch_start in tqdm(range(0, num_samples, batch_size), desc="Creating tensors"):
+        batch_end = min(batch_start + batch_size, num_samples)
+        batch_prompts = prompts[batch_start:batch_end]
+        batch_responses = responses[batch_start:batch_end]
+
+        for p, r in zip(batch_prompts, batch_responses):
+            input_encoding = tokenizer(
+                p,
+                max_length=max_length,
+                padding='max_length',
+                truncation=True,
+                return_tensors="pt",
+                add_special_tokens=True
+            )
+            target_encoding = tokenizer(
+                r,
+                max_length=max_length,
+                padding='max_length',
+                truncation=True,
+                return_tensors="pt",
+                add_special_tokens=True
+            )
+            input_tensors.append(input_encoding["input_ids"].squeeze(0))
+            target_tensors.append(target_encoding["input_ids"].squeeze(0))
+
+        # Periodically clear CUDA cache
+        if torch.cuda.is_available() and (batch_start % (batch_size * 5) == 0):
+            torch.cuda.empty_cache()
+            gc.collect()
 
     input_tensors = torch.stack(input_tensors)
     target_tensors = torch.stack(target_tensors)
@@ -162,10 +183,20 @@ def create_tensor_datasets(prompts, responses, tokenizer, max_length=256, cache_
         logger.info(f"Saving preprocessed tensors to {cache_file}")
         os.makedirs(os.path.dirname(cache_file), exist_ok=True)
         try:
-            torch.save(dataset, cache_file)
+            # Move tensors to CPU before saving
+            dataset_cpu = TensorDataset(
+                input_tensors.cpu() if input_tensors.is_cuda else input_tensors,
+                target_tensors.cpu() if target_tensors.is_cuda else target_tensors
+            )
+            torch.save(dataset_cpu, cache_file)
         except Exception as e:
             logger.warning(f"Failed to save cache file: {e}")
             logger.info("Continuing without caching")
+
+    # Clean up memory
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    gc.collect()
 
     return dataset
 
@@ -193,20 +224,30 @@ def set_seed(seed):
 
 
 def load_checkpoint(checkpoint_path, model, optimizer=None, scheduler=None, device="cuda"):
-    """Load model from checkpoint."""
+    """Load model from checkpoint with improved memory management."""
+    import gc
+    import torch
+
     logger.info(f"Loading checkpoint from {checkpoint_path}")
 
     if not os.path.exists(checkpoint_path):
         raise FileNotFoundError(f"Checkpoint file not found: {checkpoint_path}")
 
-    checkpoint = torch.load(checkpoint_path, map_location=device)
+    # Load to CPU first to manage memory better
+    checkpoint = torch.load(checkpoint_path, map_location="cpu")
 
-    # Load model state
+    # Load model state dict to the device
     model.load_state_dict(checkpoint["model_state_dict"])
+    model.to(device)
 
     # Load optimizer and scheduler if provided
     if optimizer is not None and "optimizer_state_dict" in checkpoint:
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        # Make sure optimizer states are on the correct device
+        for state in optimizer.state.values():
+            for k, v in state.items():
+                if isinstance(v, torch.Tensor):
+                    state[k] = v.to(device)
 
     if scheduler is not None and "scheduler_state_dict" in checkpoint:
         scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
@@ -220,12 +261,24 @@ def load_checkpoint(checkpoint_path, model, optimizer=None, scheduler=None, devi
         if key.startswith("metric_"):
             metrics[key[7:]] = checkpoint[key]
 
+    # Help garbage collector
+    del checkpoint["model_state_dict"]
+    if "optimizer_state_dict" in checkpoint:
+        del checkpoint["optimizer_state_dict"]
+    if "scheduler_state_dict" in checkpoint:
+        del checkpoint["scheduler_state_dict"]
+
+    # Force garbage collection
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    gc.collect()
+
     logger.info(f"Loaded checkpoint from epoch {epoch}, step {step}")
     if metrics:
         logger.info(f"Metrics from checkpoint: {metrics}")
 
     # Print current learning rate
-    print(f"Current learning rate: {optimizer.param_groups[0]['lr']}")
+    logger.info(f"Current learning rate: {optimizer.param_groups[0]['lr']}")
 
     return model, optimizer, scheduler, epoch, step
 
@@ -276,7 +329,6 @@ def main(args):
         optimizer,
         num_warmup_steps=args.warmup_steps,
         num_training_steps=100000,
-        # min_lr_ratio=0.1
     )
 
     # Load pre-trained model from Stage 1
@@ -286,6 +338,11 @@ def main(args):
             args.checkpoint_path, model, optimizer, scheduler, device
         )
         start_epoch = loaded_epoch + 1  # Start from the next epoch
+
+    # Force garbage collection after loading checkpoint
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    gc.collect()
 
     # Create tensor datasets
     logger.info("Creating tensor datasets")
@@ -298,22 +355,28 @@ def main(args):
     dataset = create_tensor_datasets(
         raw_datasets['train']['prompt'],
         raw_datasets['train']['response'],
-        # None,
-        # None,
         tokenizer,
         max_length=args.max_seq_length,
         cache_file=train_cache_file
     )
 
+    # Force garbage collection after creating training dataset
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    gc.collect()
+
     test_dataset = create_tensor_datasets(
         raw_datasets['test']['prompt'],
         raw_datasets['test']['response'],
-        # None,
-        # None,
         tokenizer,
         max_length=args.max_seq_length,
         cache_file=test_cache_file
     )
+
+    # Force garbage collection after creating test dataset
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    gc.collect()
 
     # Create dataloaders
     logger.info("Creating dataloaders")
@@ -339,6 +402,11 @@ def main(args):
         if i >= 2:
             break
 
+    # Clear GPU memory after checking batches
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    gc.collect()
+
     # Update scheduler with actual training steps
     total_steps = len(train_dataloader) * args.num_epochs // args.gradient_accumulation_steps
 
@@ -354,7 +422,6 @@ def main(args):
             optimizer,
             num_warmup_steps=args.warmup_steps,
             num_training_steps=total_steps,
-            # min_lr_ratio=args.min_lr_ratio
         )
     elif args.lr_scheduler_type == "linear":
         scheduler = get_linear_schedule_with_warmup(
@@ -396,6 +463,19 @@ def main(args):
     # Fine-tune the model
     logger.info(f"Starting fine-tuning from epoch {start_epoch}")
 
+    # Clear memory one more time before training
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    gc.collect()
+
+    # Add a memory monitoring logic
+    if torch.cuda.is_available():
+        # Print initial GPU memory usage
+        reserved = torch.cuda.memory_reserved(0)
+        allocated = torch.cuda.memory_allocated(0)
+        logger.info(
+            f"Initial GPU memory: Reserved: {reserved / 1024 ** 3:.2f}GB, Allocated: {allocated / 1024 ** 3:.2f}GB")
+
     model = train_model(
         model=model,
         train_dataloader=train_dataloader,
@@ -419,10 +499,26 @@ def main(args):
         ema_decay=args.ema_decay
     )
 
+    # Clean up memory before saving final model
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    gc.collect()
+
     # Save final fine-tuned model
     final_model_path = os.path.join(args.output_dir, f"final_model.pth")
     torch.save(model.state_dict(), final_model_path)
     logger.info(f"Saved final fine-tuned model to {final_model_path}")
+
+    # Final memory cleanup
+    if torch.cuda.is_available():
+        # Print final GPU memory usage
+        reserved = torch.cuda.memory_reserved(0)
+        allocated = torch.cuda.memory_allocated(0)
+        logger.info(
+            f"Final GPU memory: Reserved: {reserved / 1024 ** 3:.2f}GB, Allocated: {allocated / 1024 ** 3:.2f}GB")
+
+        torch.cuda.empty_cache()
+    gc.collect()
 
 
 if __name__ == "__main__":

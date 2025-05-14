@@ -1,3 +1,6 @@
+import gc
+
+
 # ==========================================
 # Error Analysis Functions
 # ==========================================
@@ -225,20 +228,27 @@ def debug_metrics_calculation(reference, hypothesis):
 # Visualization Functions
 # ==========================================
 
+# Additional fix for memory leak in plot_metrics_comparison
+
 def plot_metrics_comparison(evaluation_results, output_dir=None):
     """
     Create visualizations comparing different metrics
+    Memory-efficient version
 
     Args:
         evaluation_results: List of detailed evaluation results
         output_dir: Directory to save visualizations
     """
+    import gc
+    import torch
+    import matplotlib.pyplot as plt
+
     plt.figure(figsize=(12, 8))
 
-    # Extract metrics
-    bleu_scores = [r['bleu'] for r in evaluation_results]
-    f1_scores = [r['f1_score'] for r in evaluation_results]
-    rouge_l_scores = [r['rougeL'] for r in evaluation_results]
+    # Extract metrics as native Python types instead of NumPy arrays
+    bleu_scores = [float(r['bleu']) for r in evaluation_results]
+    f1_scores = [float(r['f1_score']) for r in evaluation_results]
+    rouge_l_scores = [float(r['rougeL']) for r in evaluation_results]
 
     # Plot BLEU vs F1
     plt.subplot(2, 2, 1)
@@ -290,17 +300,29 @@ def plot_metrics_comparison(evaluation_results, output_dir=None):
         plt.savefig(metrics_plot_path, dpi=300, bbox_inches='tight')
         logger.info(f"Metrics comparison plot saved to {metrics_plot_path}")
 
-    plt.close()
+    plt.close('all')  # Close all figure windows
+
+    # Clean up memory
+    del bleu_scores, f1_scores, rouge_l_scores, quality_counts, counts
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    gc.collect()
 
 
 def plot_language_comparison(evaluation_results, output_dir=None):
     """
     Create visualizations comparing performance between languages
+    Memory-efficient version
 
     Args:
         evaluation_results: List of detailed evaluation results
         output_dir: Directory to save visualizations
     """
+    import gc
+    import torch
+    import matplotlib.pyplot as plt
+    import numpy as np
+
     # Separate results by language
     arabic_results = [r for r in evaluation_results if r.get('is_arabic', False)]
     non_arabic_results = [r for r in evaluation_results if not r.get('is_arabic', False)]
@@ -311,14 +333,14 @@ def plot_language_comparison(evaluation_results, output_dir=None):
 
     plt.figure(figsize=(14, 10))
 
-    # Extract metrics by language
+    # Extract metrics by language as native Python types
     metrics = ['bleu', 'f1_score', 'rouge1', 'rouge2', 'rougeL']
     metric_names = ['BLEU', 'F1', 'ROUGE-1', 'ROUGE-2', 'ROUGE-L']
 
     # Plot 1: Mean metrics comparison
     plt.subplot(2, 2, 1)
-    ar_means = [np.mean([r[m] for r in arabic_results]) for m in metrics]
-    non_ar_means = [np.mean([r[m] for r in non_arabic_results]) for m in metrics]
+    ar_means = [np.mean([float(r[m]) for r in arabic_results]) for m in metrics]
+    non_ar_means = [np.mean([float(r[m]) for r in non_arabic_results]) for m in metrics]
 
     x = np.arange(len(metrics))
     width = 0.35
@@ -371,8 +393,8 @@ def plot_language_comparison(evaluation_results, output_dir=None):
 
     # Plot 3: Generation time comparison
     plt.subplot(2, 2, 3)
-    ar_times = [r['generation_time'] for r in arabic_results]
-    non_ar_times = [r['generation_time'] for r in non_arabic_results]
+    ar_times = [float(r['generation_time']) for r in arabic_results]
+    non_ar_times = [float(r['generation_time']) for r in non_arabic_results]
 
     plt.boxplot([ar_times, non_ar_times], labels=['Arabic', 'Non-Arabic'])
     plt.ylabel('Generation Time (seconds)')
@@ -382,8 +404,8 @@ def plot_language_comparison(evaluation_results, output_dir=None):
     # Plot 4: Metrics distributions by language
     plt.subplot(2, 2, 4)
 
-    ar_bleu = [r['bleu'] for r in arabic_results]
-    non_ar_bleu = [r['bleu'] for r in non_arabic_results]
+    ar_bleu = [float(r['bleu']) for r in arabic_results]
+    non_ar_bleu = [float(r['bleu']) for r in non_arabic_results]
 
     plt.hist(ar_bleu, bins=20, alpha=0.5, label='Arabic')
     plt.hist(non_ar_bleu, bins=20, alpha=0.5, label='Non-Arabic')
@@ -401,12 +423,21 @@ def plot_language_comparison(evaluation_results, output_dir=None):
         plt.savefig(lang_plot_path, dpi=300, bbox_inches='tight')
         logger.info(f"Language comparison plot saved to {lang_plot_path}")
 
-    plt.close()
+    plt.close('all')  # Close all figure windows
+
+    # Clean up memory
+    del arabic_results, non_arabic_results, ar_means, non_ar_means
+    del ar_quality_counts, non_ar_quality_counts, ar_counts, non_ar_counts
+    del ar_pcts, non_ar_pcts, ar_times, non_ar_times, ar_bleu, non_ar_bleu
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    gc.collect()
 
 
 def plot_training_history(train_losses, val_losses, lr_history=None, output_dir=None):
     """
     Plot training history with training and validation loss
+    Memory-efficient version
 
     Args:
         train_losses: List of training losses
@@ -414,7 +445,18 @@ def plot_training_history(train_losses, val_losses, lr_history=None, output_dir=
         lr_history: Optional list of learning rates
         output_dir: Directory to save the plot
     """
+    import gc
+    import torch
+    import matplotlib.pyplot as plt
+    import numpy as np
+
     plt.figure(figsize=(12, 8))
+
+    # Convert to Python native types if needed
+    train_losses = [float(loss) for loss in train_losses]
+    val_losses = [float(loss) for loss in val_losses] if val_losses else []
+    if lr_history:
+        lr_history = [float(lr) for lr in lr_history]
 
     # Plot losses
     plt.subplot(2, 1, 1)
@@ -450,16 +492,27 @@ def plot_training_history(train_losses, val_losses, lr_history=None, output_dir=
         plt.savefig(history_plot_path, dpi=300, bbox_inches='tight')
         logger.info(f"Training history plot saved to {history_plot_path}")
 
-    plt.close()
+    plt.close('all')  # Close all figure windows
+
+    # Clean up memory
+    del train_losses, val_losses
+    if lr_history:
+        del lr_history
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    gc.collect()
 
 
 # ==========================================
 # Integration with Training Workflow
 # ==========================================
 
+# Fix for EvaluationCallback in enhanced_evaluation.py
+
 class EvaluationCallback:
     """
     Callback class to be used during training for evaluation and visualization
+    with memory optimization
     """
 
     def __init__(
@@ -472,7 +525,8 @@ class EvaluationCallback:
             eval_steps=1000,
             save_best_model=True,
             handle_arabic=True,
-            max_eval_samples=3  # Added parameter to control number of evaluation samples
+            max_eval_samples=3,
+            max_history_size=1000  # Limit history size to prevent memory leaks
     ):
         """
         Initialize the callback
@@ -487,6 +541,7 @@ class EvaluationCallback:
             save_best_model: Whether to save the best model
             handle_arabic: Whether to apply Arabic-specific processing
             max_eval_samples: Maximum number of samples to evaluate
+            max_history_size: Maximum number of entries to keep in history lists
         """
         self.model = model
         self.tokenizer = tokenizer
@@ -497,6 +552,7 @@ class EvaluationCallback:
         self.save_best_model = save_best_model
         self.handle_arabic = handle_arabic
         self.max_eval_samples = max_eval_samples
+        self.max_history_size = max_history_size
 
         # Create output directory
         os.makedirs(output_dir, exist_ok=True)
@@ -542,6 +598,9 @@ class EvaluationCallback:
             self.lr_history.append(current_lr)
             self.history["learning_rates"].append(current_lr)
 
+        # Limit the size of history lists to prevent memory leaks
+        self._trim_history_lists()
+
         # Run evaluation at specified steps
         if step % self.eval_steps == 0:
             self.on_evaluation(step)
@@ -553,6 +612,9 @@ class EvaluationCallback:
         Args:
             step: Current step number
         """
+        import gc
+        import torch
+
         logger.info(f"Running evaluation at step {step}")
 
         # Create a temporary config for evaluation
@@ -587,6 +649,9 @@ class EvaluationCallback:
             )
             logger.info(f"Evaluating on {self.max_eval_samples} samples instead of {len(self.eval_dataloader.dataset)}")
 
+        # Ensure the model is in eval mode
+        self.model.eval()
+
         # Run evaluation
         eval_output_dir = os.path.join(self.output_dir, f"step_{step}")
         eval_summary, detailed_results = evaluate_model(
@@ -608,15 +673,21 @@ class EvaluationCallback:
         self.history["bleu_scores"].append(avg_bleu)
         self.history["f1_scores"].append(avg_f1)
 
+        # Trim history again after adding new values
+        self._trim_history_lists()
+
         # Save history
         self._save_history()
 
         # Create plots
         plot_metrics_comparison(detailed_results, eval_output_dir)
         plot_training_history(
-            self.train_losses,
-            self.val_losses,
-            self.lr_history,
+            self.train_losses[-self.max_history_size:] if len(
+                self.train_losses) > self.max_history_size else self.train_losses,
+            self.val_losses[-self.max_history_size:] if len(
+                self.val_losses) > self.max_history_size else self.val_losses,
+            self.lr_history[-self.max_history_size:] if len(
+                self.lr_history) > self.max_history_size else self.lr_history,
             self.output_dir
         )
 
@@ -636,31 +707,76 @@ class EvaluationCallback:
                 torch.save(self.model.state_dict(), best_model_path)
                 logger.info(f"Best model saved to {best_model_path}")
 
+        # Force garbage collection and clear CUDA cache after evaluation
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        gc.collect()
+
+        # Don't store the detailed results
+        del detailed_results
+
+        # Explicitly return to training mode
+        self.model.train()
+
     def on_training_end(self):
         """Call at the end of training"""
+        import gc
+        import torch
+
         # Create final visualizations
         plot_training_history(
-            self.train_losses,
-            self.val_losses,
-            self.lr_history,
+            self.train_losses[-self.max_history_size:] if len(
+                self.train_losses) > self.max_history_size else self.train_losses,
+            self.val_losses[-self.max_history_size:] if len(
+                self.val_losses) > self.max_history_size else self.val_losses,
+            self.lr_history[-self.max_history_size:] if len(
+                self.lr_history) > self.max_history_size else self.lr_history,
             self.output_dir
         )
 
         # Log best model info
         logger.info(f"Training complete. Best model at step {self.best_step} with BLEU {self.best_bleu:.4f}")
 
+        # Clean up memory
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        gc.collect()
+
     def _save_history(self):
-        """Save training history to file, ensuring all values are JSON-serializable"""
+        """Save training history to file, ensuring all values are JSON-serializable and memory-efficient"""
+        import json
+        import numpy as np
+
         json_safe_history = {}
 
         for key, values in self.history.items():
+            # Keep only the last max_history_size entries for each key
+            trimmed_values = values[-self.max_history_size:] if len(values) > self.max_history_size else values
+
             # Convert any NumPy types to Python native types
             json_safe_history[key] = [float(v) if isinstance(v, (np.float32, np.float64, np.int32, np.int64)) else v
-                                      for v in values]
+                                      for v in trimmed_values]
 
         # Save to file
         with open(self.history_file, 'w', encoding='utf-8') as f:
             json.dump(json_safe_history, f, ensure_ascii=False, indent=2)
+
+    def _trim_history_lists(self):
+        """Trim history lists to prevent memory leaks"""
+        # Trim main lists
+        if len(self.train_losses) > self.max_history_size:
+            self.train_losses = self.train_losses[-self.max_history_size:]
+
+        if len(self.val_losses) > self.max_history_size:
+            self.val_losses = self.val_losses[-self.max_history_size:]
+
+        if len(self.lr_history) > self.max_history_size:
+            self.lr_history = self.lr_history[-self.max_history_size:]
+
+        # Trim history dict
+        for key in self.history:
+            if len(self.history[key]) > self.max_history_size:
+                self.history[key] = self.history[key][-self.max_history_size:]
 
 
 # ==========================================
@@ -1500,9 +1616,11 @@ def calculate_exact_match(reference, hypothesis):
 # Evaluation Functions
 # ==========================================
 
+# Modify evaluate_model in enhanced_evaluation.py to fix memory leaks
+
 def evaluate_model(model, dataloader, tokenizer, device, config, output_dir=None):
     """
-    Evaluate model performance with comprehensive metrics
+    Evaluate model performance with comprehensive metrics and memory optimization
 
     Args:
         model: The trained model
@@ -1515,6 +1633,7 @@ def evaluate_model(model, dataloader, tokenizer, device, config, output_dir=None
     Returns:
         Dictionary with evaluation metrics
     """
+
     logger.info("Starting enhanced model evaluation...")
     model.eval()
 
@@ -1602,21 +1721,21 @@ def evaluate_model(model, dataloader, tokenizer, device, config, output_dir=None
                 else:
                     quality = "Poor"
 
-                # Store detailed result
+                # Store detailed result (more memory efficient by storing just what's needed)
                 result = {
                     'id': total_samples,
                     'source': source_text,
                     'reference': target_text,
                     'generated': generated_text,
-                    'bleu': bleu,
-                    'rouge1': rouge_scores['rouge1'],
-                    'rouge2': rouge_scores['rouge2'],
-                    'rougeL': rouge_scores['rougeL'],
-                    'f1_score': f1,
-                    'exact_match': exact_match,
-                    'generation_time': gen_time,
+                    'bleu': float(bleu),
+                    'rouge1': float(rouge_scores['rouge1']),
+                    'rouge2': float(rouge_scores['rouge2']),
+                    'rougeL': float(rouge_scores['rougeL']),
+                    'f1_score': float(f1),
+                    'exact_match': float(exact_match),
+                    'generation_time': float(gen_time),
                     'quality': quality,
-                    'is_arabic': is_arabic(target_text)
+                    'is_arabic': bool(is_arabic(target_text))
                 }
                 detailed_results.append(result)
                 total_samples += 1
@@ -1626,13 +1745,17 @@ def evaluate_model(model, dataloader, tokenizer, device, config, output_dir=None
             avg_f1 = np.mean(metrics['f1_score']) if metrics['f1_score'] else 0
             pbar.set_postfix({'BLEU': f"{avg_bleu:.4f}", 'F1': f"{avg_f1:.4f}"})
 
+            # Periodic cleanup to avoid memory accumulation during evaluation
+            if batch_idx % 5 == 0 and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
     # Calculate average metrics
     evaluation_summary = {}
     for metric_name, values in metrics.items():
         if values:
-            evaluation_summary[f'avg_{metric_name}'] = np.mean(values)
-            evaluation_summary[f'max_{metric_name}'] = np.max(values)
-            evaluation_summary[f'min_{metric_name}'] = np.min(values)
+            evaluation_summary[f'avg_{metric_name}'] = float(np.mean(values))
+            evaluation_summary[f'max_{metric_name}'] = float(np.max(values))
+            evaluation_summary[f'min_{metric_name}'] = float(np.min(values))
 
     # Calculate quality distribution
     quality_counts = {}
@@ -1650,23 +1773,43 @@ def evaluate_model(model, dataloader, tokenizer, device, config, output_dir=None
     if arabic_results:
         evaluation_summary['arabic_metrics'] = {
             'count': len(arabic_results),
-            'avg_bleu': np.mean([r['bleu'] for r in arabic_results]),
-            'avg_f1': np.mean([r['f1_score'] for r in arabic_results]),
-            'avg_rouge1': np.mean([r['rouge1'] for r in arabic_results]),
-            'avg_rougeL': np.mean([r['rougeL'] for r in arabic_results])
+            'avg_bleu': float(np.mean([r['bleu'] for r in arabic_results])),
+            'avg_f1': float(np.mean([r['f1_score'] for r in arabic_results])),
+            'avg_rouge1': float(np.mean([r['rouge1'] for r in arabic_results])),
+            'avg_rougeL': float(np.mean([r['rougeL'] for r in arabic_results]))
         }
 
     if non_arabic_results:
         evaluation_summary['non_arabic_metrics'] = {
             'count': len(non_arabic_results),
-            'avg_bleu': np.mean([r['bleu'] for r in non_arabic_results]),
-            'avg_f1': np.mean([r['f1_score'] for r in non_arabic_results]),
-            'avg_rouge1': np.mean([r['rouge1'] for r in non_arabic_results]),
-            'avg_rougeL': np.mean([r['rougeL'] for r in non_arabic_results])
+            'avg_bleu': float(np.mean([r['bleu'] for r in non_arabic_results])),
+            'avg_f1': float(np.mean([r['f1_score'] for r in non_arabic_results])),
+            'avg_rouge1': float(np.mean([r['rouge1'] for r in non_arabic_results])),
+            'avg_rougeL': float(np.mean([r['rougeL'] for r in non_arabic_results]))
         }
 
     # Save results if output directory is provided
     if output_dir:
+        # Make detailed results JSON-serializable
+        json_safe_results = []
+        for result in detailed_results:
+            json_safe_result = {}
+            for k, v in result.items():
+                if isinstance(v, (np.float32, np.float64, np.int32, np.int64)):
+                    json_safe_result[k] = float(v)
+                else:
+                    json_safe_result[k] = v
+            json_safe_results.append(json_safe_result)
+
+        # Save detailed results
+        with open(detailed_file, 'w', encoding='utf-8') as f:
+            json.dump(json_safe_results, f, ensure_ascii=False, indent=2)
+            f.flush()  # Force write to disk
+
+        # Save summary (after clearing detailed results to save memory)
+        detailed_results = None  # Help garbage collector
+        json_safe_results = None
+
         # Convert NumPy values to Python native types for JSON serialization
         json_safe_summary = {}
         for k, v in evaluation_summary.items():
@@ -1682,23 +1825,14 @@ def evaluate_model(model, dataloader, tokenizer, device, config, output_dir=None
         # Save summary
         with open(results_file, 'w', encoding='utf-8') as f:
             json.dump(json_safe_summary, f, ensure_ascii=False, indent=2)
-
-        # Make detailed results JSON-serializable
-        json_safe_results = []
-        for result in detailed_results:
-            json_safe_result = {}
-            for k, v in result.items():
-                if isinstance(v, (np.float32, np.float64, np.int32, np.int64)):
-                    json_safe_result[k] = float(v)
-                else:
-                    json_safe_result[k] = v
-            json_safe_results.append(json_safe_result)
-
-        # Save detailed results
-        with open(detailed_file, 'w', encoding='utf-8') as f:
-            json.dump(json_safe_results, f, ensure_ascii=False, indent=2)
+            f.flush()  # Force write to disk
 
         logger.info(f"Evaluation results saved to {output_dir}")
+
+    # Force memory cleanup
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    gc.collect()
 
     logger.info(f"Evaluation complete: {total_samples} samples evaluated")
     logger.info(f"Average BLEU: {evaluation_summary.get('avg_bleu', 0):.4f}")
