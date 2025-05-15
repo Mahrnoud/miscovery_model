@@ -335,6 +335,12 @@ def main(args):
             lr_end=args.learning_rate * args.min_lr_ratio,
             power=1.0
         )
+    else:
+        scheduler = get_cosine_schedule_with_warmup(
+            optimizer,
+            num_warmup_steps=args.warmup_steps,
+            num_training_steps=total_steps
+        )
 
     # Initialize loss function with label smoothing
     criterion = nn.CrossEntropyLoss(
