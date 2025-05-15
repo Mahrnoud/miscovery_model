@@ -1,11 +1,9 @@
 """
 Enhanced Transformer-based Model for Text Summarization and Translation
-Main training script with improved architecture and training process
-(Modified: Removed evaluation and checkpoint functionality)
+Main training script with improved architecture, training process, and evaluation
 """
 import os
 import random
-
 import sys
 import argparse
 from datetime import datetime
@@ -24,6 +22,7 @@ from transformers import (
 # Import our model and training utilities
 from model_architecture import Transformer
 from enhanced_training_code import train_model, get_cosine_schedule_with_warmup
+from evaluation import ModelEvaluator, evaluate_translations, load_best_model
 
 # Dataset preprocessing imports
 import nltk
@@ -385,8 +384,8 @@ def main(args):
     saving_directory = args.output_dir
     os.makedirs(saving_directory, exist_ok=True)
 
-    # Train the model
-    logger.info("Starting training")
+    # Train the model with evaluation
+    logger.info("Starting training with evaluation")
     model = train_model(
         model=model,
         train_dataloader=train_dataloader,
@@ -399,8 +398,25 @@ def main(args):
         label_smoothing=args.label_smoothing,
         weight_decay=args.weight_decay,
         max_grad_norm=args.max_grad_norm,
-        ema_decay=args.ema_decay
+        ema_decay=args.ema_decay,
+        eval_dataloader=test_dataloader,  # Added evaluation dataloader
+        tokenizer=tokenizer,  # Added tokenizer for evaluation
+        eval_steps=args.eval_steps,  # Evaluate every N steps
+        save_steps=args.save_steps,  # Save checkpoint every N steps
+        output_dir=saving_directory,  # Output directory
+        max_checkpoints=args.max_checkpoints  # Maximum number of checkpoints to keep
     )
+
+    # Load best model for final evaluation
+    model = load_best_model(model, saving_directory, device)
+
+    # Final evaluation on test set
+    logger.info("Starting final evaluation on test set")
+    evaluator = ModelEvaluator(model, tokenizer, test_dataloader, device, saving_directory)
+    final_metrics = evaluator.evaluate(args.num_epochs, total_steps)
+
+    # Show translation examples
+    evaluate_translations(model, test_dataloader, tokenizer, device, num_examples=5)
 
     # Save final model
     logger.info(f"Saving final model to {saving_directory}/model_final.pth")
@@ -431,6 +447,11 @@ if __name__ == "__main__":
     parser.add_argument("--max_grad_norm", type=float, default=1.0, help="Maximum gradient norm")
     parser.add_argument("--ema_decay", type=float, default=0.9999, help="EMA decay rate (0 to disable)")
     parser.add_argument("--num_workers", type=int, default=2, help="Number of dataloader workers")
+
+    # Evaluation parameters (new)
+    parser.add_argument("--eval_steps", type=int, default=500, help="Evaluate every N steps")
+    parser.add_argument("--save_steps", type=int, default=1000, help="Save checkpoint every N steps")
+    parser.add_argument("--max_checkpoints", type=int, default=2, help="Maximum number of checkpoints to keep")
 
     # Dataset parameters
     parser.add_argument("--samples_per_lang", type=int, default=100, help="Number of samples per language")

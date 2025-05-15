@@ -1,9 +1,14 @@
+"""
+Enhanced training module with evaluation metrics and checkpoint management
+"""
 import math
 import time
 
 import torch
 import torch.nn as nn
 from tqdm import tqdm
+import matplotlib.pyplot as plt
+import os
 
 
 def get_cosine_schedule_with_warmup(optimizer, num_warmup_steps, num_training_steps, min_lr_ratio=0.0,
@@ -73,19 +78,46 @@ def train_model(model, train_dataloader, criterion, optimizer, scheduler,
                 label_smoothing=0.1,
                 weight_decay=0.01,
                 max_grad_norm=1.0,
-                ema_decay=0.9999  # Added EMA
+                ema_decay=0.9999,  # Added EMA
+                eval_dataloader=None,  # Added evaluation dataloader
+                tokenizer=None,  # Added tokenizer for evaluation
+                eval_steps=500,  # Evaluate every N steps
+                save_steps=1000,  # Save checkpoint every N steps
+                output_dir="./outputs",  # Output directory
+                max_checkpoints=2,  # Maximum number of checkpoints to keep
                 ):
     """
-    Enhanced training function without evaluation and checkpoint saving
+    Enhanced training function with evaluation metrics and checkpoint management
     """
+    # Import the evaluator class here to avoid circular imports
+    from evaluation import ModelEvaluator
+
     model.train()
     global_step = 0
+    best_eval_metric = float('-inf')
 
     # Create EMA for the model
     if ema_decay > 0:
         ema = EMA(model, decay=ema_decay)
     else:
         ema = None
+
+    # Create output directories
+    os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(os.path.join(output_dir, "checkpoints"), exist_ok=True)
+    os.makedirs(os.path.join(output_dir, "figures"), exist_ok=True)
+
+    # Initialize evaluator if evaluation is enabled
+    evaluator = None
+    if eval_dataloader is not None and tokenizer is not None:
+        evaluator = ModelEvaluator(
+            model=model,
+            tokenizer=tokenizer,
+            eval_dataloader=eval_dataloader,
+            device=device,
+            output_dir=output_dir,
+            max_checkpoints=max_checkpoints
+        )
 
     use_cuda = torch.cuda.is_available()
     scaler = torch.amp.GradScaler(enabled=use_cuda)
@@ -98,10 +130,13 @@ def train_model(model, train_dataloader, criterion, optimizer, scheduler,
     print(f"- EMA decay: {ema_decay if ema is not None else 'Disabled'}")
     print(f"- Weight decay: {weight_decay}")
     print(f"- Max gradient norm: {max_grad_norm}")
+    print(f"- Evaluation steps: {eval_steps if evaluator else 'Disabled'}")
+    print(f"- Output directory: {output_dir}")
 
     # Track metrics for logging
     train_losses = []
     learning_rates = []
+    eval_metrics = []
 
     for epoch in range(start_epoch, epochs):
         total_loss = 0
@@ -149,12 +184,6 @@ def train_model(model, train_dataloader, criterion, optimizer, scheduler,
                 scaler.update()
                 scheduler.step()
 
-                # In enhanced_training_code.py, inside the train_model function
-                # In the batch loop, after scheduler.step(), add:
-                if global_step % 100 == 0:
-                    current_lr = scheduler.get_last_lr()[0]
-                    print(f"\nStep {global_step} - Current learning rate: {current_lr:.7f}")
-
                 # Update EMA if enabled
                 if ema is not None:
                     ema.update()
@@ -165,6 +194,30 @@ def train_model(model, train_dataloader, criterion, optimizer, scheduler,
                 current_lr = scheduler.get_last_lr()[0]
                 learning_rates.append(current_lr)
                 train_losses.append(loss.item() * gradient_accumulation_steps)
+
+                # Log info periodically
+                if global_step % 100 == 0:
+                    print(f"\nStep {global_step} - Current learning rate: {current_lr:.7f}")
+
+                # Run evaluation at specified intervals
+                if evaluator and global_step % eval_steps == 0:
+                    # Apply EMA before evaluation if enabled
+                    if ema is not None:
+                        ema.apply_shadow()
+
+                    # Get average training loss
+                    avg_train_loss = sum(train_losses[-100:]) / min(100, len(train_losses[-100:]))
+
+                    # Run evaluation
+                    metrics = evaluator.evaluate(epoch + 1, global_step, train_loss=avg_train_loss)
+                    eval_metrics.append(metrics)
+
+                    # Restore model if EMA was applied
+                    if ema is not None:
+                        ema.restore()
+
+                    # Reset model to training mode
+                    model.train()
 
             total_loss += loss.item() * gradient_accumulation_steps
 
@@ -179,6 +232,75 @@ def train_model(model, train_dataloader, criterion, optimizer, scheduler,
         avg_loss = total_loss / len(train_dataloader)
         print(f"\nEpoch {epoch + 1}/{epochs} completed in {epoch_time:.2f}s. Average Train Loss: {avg_loss:.4f}")
 
+        # Run evaluation at the end of each epoch if not already done
+        if evaluator and (global_step % eval_steps != 0):
+            # Apply EMA before evaluation if enabled
+            if ema is not None:
+                ema.apply_shadow()
+
+            # Get average training loss for the epoch
+            avg_train_loss = avg_loss
+
+            # Run evaluation
+            metrics = evaluator.evaluate(epoch + 1, global_step, train_loss=avg_train_loss)
+            eval_metrics.append(metrics)
+
+            # Restore model if EMA was applied
+            if ema is not None:
+                ema.restore()
+
+            # Reset model to training mode
+            model.train()
+
+    # Plot combined training history at the end
+    if train_losses and evaluator:
+        plot_training_history(train_losses, eval_metrics, output_dir)
+
     print("Training finished.")
 
     return model
+
+
+def plot_training_history(train_losses, eval_metrics, output_dir):
+    """
+    Plot the complete training history
+    """
+    os.makedirs(os.path.join(output_dir, "figures"), exist_ok=True)
+
+    # Create steps for x-axis
+    train_steps = list(range(1, len(train_losses) + 1))
+    eval_steps = [int(len(train_losses) * (i + 1) / len(eval_metrics)) for i in range(len(eval_metrics))]
+
+    # Extract evaluation metrics
+    eval_losses = [m["eval_loss"] for m in eval_metrics]
+    rouge_l = [m["rougeL"] for m in eval_metrics]
+    bleu = [m["bleu"] for m in eval_metrics]
+    f1 = [m["f1"] for m in eval_metrics]
+
+    # Create figure with two subplots
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10), sharex=False)
+
+    # Plot losses
+    ax1.plot(train_steps, train_losses, label="Training Loss", alpha=0.5, color="blue")
+    ax1.plot(eval_steps, eval_losses, label="Evaluation Loss", marker="o", color="red")
+    ax1.set_title("Training and Evaluation Loss")
+    ax1.set_xlabel("Training Steps")
+    ax1.set_ylabel("Loss")
+    ax1.legend()
+    ax1.grid(True, linestyle="--", alpha=0.7)
+
+    # Plot metrics
+    ax2.plot(eval_steps, rouge_l, label="ROUGE-L", marker="o")
+    ax2.plot(eval_steps, bleu, label="BLEU", marker="s")
+    ax2.plot(eval_steps, f1, label="F1", marker="^")
+    ax2.set_title("Evaluation Metrics")
+    ax2.set_xlabel("Training Steps")
+    ax2.set_ylabel("Score")
+    ax2.legend()
+    ax2.grid(True, linestyle="--", alpha=0.7)
+
+    plt.tight_layout()
+
+    # Save the figure
+    plt.savefig(os.path.join(output_dir, "figures", "complete_training_history.png"), dpi=300)
+    plt.close()

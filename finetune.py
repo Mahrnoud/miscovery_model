@@ -26,6 +26,7 @@ import logging
 
 from model_architecture import Transformer
 from enhanced_training_code import train_model
+from evaluation import ModelEvaluator, evaluate_translations, load_best_model
 
 # Load tokenizer
 tokenizer = AutoTokenizer.from_pretrained("miscovery/tokenizer")
@@ -202,7 +203,11 @@ def load_checkpoint(checkpoint_path, model, device="cuda"):
     checkpoint = torch.load(checkpoint_path, map_location=device)
 
     # Load model state
-    model.load_state_dict(checkpoint["model_state_dict"])
+    if "model_state_dict" in checkpoint:
+        model.load_state_dict(checkpoint["model_state_dict"])
+    else:
+        # For compatibility with older checkpoints
+        model.load_state_dict(checkpoint)
 
     logger.info(f"Model loaded successfully")
     return model
@@ -358,8 +363,8 @@ def main(args):
     logger.info(f"Effective batch size: {args.batch_size * args.gradient_accumulation_steps}")
     logger.info(f"Total training steps: {total_steps}")
 
-    # Fine-tune the model
-    logger.info("Starting fine-tuning")
+    # Fine-tune the model with evaluation
+    logger.info("Starting fine-tuning with evaluation")
     model = train_model(
         model=model,
         train_dataloader=train_dataloader,
@@ -372,12 +377,35 @@ def main(args):
         label_smoothing=args.label_smoothing,
         weight_decay=args.weight_decay,
         max_grad_norm=args.max_grad_norm,
-        ema_decay=args.ema_decay
+        ema_decay=args.ema_decay,
+        eval_dataloader=test_dataloader,  # Added evaluation dataloader
+        tokenizer=tokenizer,  # Added tokenizer for evaluation
+        eval_steps=args.eval_steps,  # Evaluate every N steps
+        save_steps=args.save_steps,  # Save checkpoint every N steps
+        output_dir=args.output_dir,  # Output directory
+        max_checkpoints=args.max_checkpoints  # Maximum number of checkpoints to keep
     )
+
+    # Load best model for final evaluation
+    model = load_best_model(model, args.output_dir, device)
+
+    # Final evaluation on test set
+    logger.info("Starting final evaluation on test set")
+    evaluator = ModelEvaluator(model, tokenizer, test_dataloader, device, args.output_dir)
+    final_metrics = evaluator.evaluate(args.num_epochs, total_steps)
+
+    # Show translation examples
+    evaluate_translations(model, test_dataloader, tokenizer, device, num_examples=5)
 
     # Save final fine-tuned model
     final_model_path = os.path.join(args.output_dir, "final_model.pth")
-    torch.save(model.state_dict(), final_model_path)
+    torch.save(
+        {
+            "model_state_dict": model.state_dict(),
+            "metrics": final_metrics
+        },
+        final_model_path
+    )
     logger.info(f"Saved final fine-tuned model to {final_model_path}")
 
 
@@ -404,6 +432,11 @@ if __name__ == "__main__":
     parser.add_argument("--max_grad_norm", type=float, default=1.0, help="Maximum gradient norm")
     parser.add_argument("--ema_decay", type=float, default=0.9999, help="EMA decay rate (0 to disable)")
     parser.add_argument("--num_workers", type=int, default=4, help="Number of dataloader workers")
+
+    # Evaluation parameters (new)
+    parser.add_argument("--eval_steps", type=int, default=200, help="Evaluate every N steps")
+    parser.add_argument("--save_steps", type=int, default=500, help="Save checkpoint every N steps")
+    parser.add_argument("--max_checkpoints", type=int, default=2, help="Maximum number of checkpoints to keep")
 
     # Other parameters
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
