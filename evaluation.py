@@ -8,7 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics import f1_score
 from transformers import AutoTokenizer
-from datasets import load_metric
+import evaluate
 from torch.utils.data import DataLoader
 
 from model_architecture import Transformer
@@ -19,15 +19,14 @@ class ModelEvaluator:
     """
     Evaluator class for Transformer models with metrics tracking and visualization
     """
-
     def __init__(
-            self,
-            model,
-            tokenizer,
-            eval_dataloader,
-            device,
-            output_dir="./outputs",
-            max_checkpoints=2
+        self,
+        model,
+        tokenizer,
+        eval_dataloader,
+        device,
+        output_dir="./outputs",
+        max_checkpoints=2
     ):
         self.model = model
         self.tokenizer = tokenizer
@@ -42,8 +41,8 @@ class ModelEvaluator:
         os.makedirs(os.path.join(output_dir, "figures"), exist_ok=True)
 
         # Initialize metrics
-        self.rouge = load_metric("rouge")
-        self.bleu = load_metric("bleu")
+        self.rouge = evaluate.load("rouge")
+        self.bleu = evaluate.load("bleu")
 
         # Metrics history
         self.metrics_history = {
@@ -98,7 +97,7 @@ class ModelEvaluator:
                         for i in range(min(2, len(src))):
                             generated_text = generate_text_optimized(
                                 self.model,
-                                src[i:i + 1],
+                                src[i:i+1],
                                 self.tokenizer,
                                 max_length=512,
                                 device=self.device,
@@ -123,8 +122,7 @@ class ModelEvaluator:
         # Calculate ROUGE scores
         rouge_output = self.rouge.compute(
             predictions=all_preds,
-            references=all_labels,
-            use_stemmer=True
+            references=all_labels
         )
 
         # Calculate BLEU score
@@ -164,9 +162,9 @@ class ModelEvaluator:
         # Compile metrics
         metrics = {
             "eval_loss": avg_loss,
-            "rouge1": rouge_output["rouge1"].mid.fmeasure,
-            "rouge2": rouge_output["rouge2"].mid.fmeasure,
-            "rougeL": rouge_output["rougeL"].mid.fmeasure,
+            "rouge1": rouge_output["rouge1"],
+            "rouge2": rouge_output["rouge2"],
+            "rougeL": rouge_output["rougeL"],
             "bleu": bleu_score,
             "f1": avg_f1
         }
