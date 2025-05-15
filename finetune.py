@@ -384,7 +384,7 @@ if __name__ == "__main__":
     parser.add_argument("--d_ff", type=int, default=3072, help="Feed-forward dimension")
     parser.add_argument("--num_encoder_layers", type=int, default=12, help="Number of encoder layers")
     parser.add_argument("--num_decoder_layers", type=int, default=12, help="Number of decoder layers")
-    parser.add_argument("--max_seq_length", type=int, default=512, help="Maximum sequence length")
+    parser.add_argument("--max_seq_length", type=int, default=256, help="Maximum sequence length")
     parser.add_argument("--dropout", type=float, default=0.1, help="Dropout rate")
 
     # Training parameters
