@@ -31,7 +31,7 @@ from enhanced_training_code import train_model
 tokenizer = AutoTokenizer.from_pretrained("miscovery/tokenizer")
 
 
-#dataset
+# dataset
 # Token length filter function
 def is_within_limit(example, max_len=500):
     en_total = tokenizer(example["prompt_en"], example["response_en"], truncation=False, add_special_tokens=True)
@@ -192,9 +192,9 @@ def set_seed(seed):
         torch.backends.cudnn.benchmark = False
 
 
-def load_checkpoint(checkpoint_path, model, optimizer=None, scheduler=None, device="cuda"):
-    """Load model from checkpoint."""
-    logger.info(f"Loading checkpoint from {checkpoint_path}")
+def load_checkpoint(checkpoint_path, model, device="cuda"):
+    """Load model from checkpoint (simplified - only loads state dict)."""
+    logger.info(f"Loading model from {checkpoint_path}")
 
     if not os.path.exists(checkpoint_path):
         raise FileNotFoundError(f"Checkpoint file not found: {checkpoint_path}")
@@ -204,30 +204,8 @@ def load_checkpoint(checkpoint_path, model, optimizer=None, scheduler=None, devi
     # Load model state
     model.load_state_dict(checkpoint["model_state_dict"])
 
-    # Load optimizer and scheduler if provided
-    if optimizer is not None and "optimizer_state_dict" in checkpoint:
-        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-
-    if scheduler is not None and "scheduler_state_dict" in checkpoint:
-        scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
-
-    # Return additional training info
-    epoch = checkpoint.get("epoch", 0)
-    step = checkpoint.get("step", 0)
-
-    metrics = {}
-    for key in checkpoint:
-        if key.startswith("metric_"):
-            metrics[key[7:]] = checkpoint[key]
-
-    logger.info(f"Loaded checkpoint from epoch {epoch}, step {step}")
-    if metrics:
-        logger.info(f"Metrics from checkpoint: {metrics}")
-
-    # Print current learning rate
-    print(f"Current learning rate: {optimizer.param_groups[0]['lr']}")
-
-    return model, optimizer, scheduler, epoch, step
+    logger.info(f"Model loaded successfully")
+    return model
 
 
 def main(args):
@@ -240,8 +218,6 @@ def main(args):
 
     # Prepare output directories
     os.makedirs(args.output_dir, exist_ok=True)
-    checkpoint_dir = os.path.join(args.output_dir, "checkpoints")
-    os.makedirs(checkpoint_dir, exist_ok=True)
 
     # Create model instance
     logger.info("Initializing model architecture")
@@ -271,21 +247,9 @@ def main(args):
         weight_decay=args.weight_decay
     )
 
-    # Initialize learning rate scheduler (will be updated after loading checkpoint)
-    scheduler = get_cosine_schedule_with_warmup(
-        optimizer,
-        num_warmup_steps=args.warmup_steps,
-        num_training_steps=100000,
-        # min_lr_ratio=0.1
-    )
-
-    # Load pre-trained model from Stage 1
-    start_epoch = 0
+    # Load pre-trained model from Stage 1 if specified
     if args.checkpoint_path:
-        model, optimizer, scheduler, loaded_epoch, step = load_checkpoint(
-            args.checkpoint_path, model, optimizer, scheduler, device
-        )
-        start_epoch = loaded_epoch + 1  # Start from the next epoch
+        model = load_checkpoint(args.checkpoint_path, model, device)
 
     # Create tensor datasets
     logger.info("Creating tensor datasets")
@@ -298,8 +262,6 @@ def main(args):
     dataset = create_tensor_datasets(
         raw_datasets['train']['prompt'],
         raw_datasets['train']['response'],
-        # None,
-        # None,
         tokenizer,
         max_length=args.max_seq_length,
         cache_file=train_cache_file
@@ -308,8 +270,6 @@ def main(args):
     test_dataset = create_tensor_datasets(
         raw_datasets['test']['prompt'],
         raw_datasets['test']['response'],
-        # None,
-        # None,
         tokenizer,
         max_length=args.max_seq_length,
         cache_file=test_cache_file
@@ -339,7 +299,7 @@ def main(args):
         if i >= 2:
             break
 
-    # Update scheduler with actual training steps
+    # Calculate total steps for scheduler
     total_steps = len(train_dataloader) * args.num_epochs // args.gradient_accumulation_steps
 
     # Calculate warmup steps as a ratio of total training steps
@@ -353,8 +313,7 @@ def main(args):
         scheduler = get_cosine_schedule_with_warmup(
             optimizer,
             num_warmup_steps=args.warmup_steps,
-            num_training_steps=total_steps,
-            # min_lr_ratio=args.min_lr_ratio
+            num_training_steps=total_steps
         )
     elif args.lr_scheduler_type == "linear":
         scheduler = get_linear_schedule_with_warmup(
@@ -394,25 +353,16 @@ def main(args):
     logger.info(f"Total training steps: {total_steps}")
 
     # Fine-tune the model
-    logger.info(f"Starting fine-tuning from epoch {start_epoch}")
-
+    logger.info("Starting fine-tuning")
     model = train_model(
         model=model,
         train_dataloader=train_dataloader,
-        test_dataloader=test_dataloader,
         criterion=criterion,
         optimizer=optimizer,
         scheduler=scheduler,
         device=device,
         epochs=args.num_epochs,
-        start_epoch=start_epoch,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
-        eval_steps=args.eval_steps,
-        save_steps=args.save_steps,
-        checkpoint_dir=checkpoint_dir,
-        early_stopping_patience=args.early_stopping_patience,
-        tokenizer=tokenizer,
-        max_checkpoints=args.max_checkpoints,
         label_smoothing=args.label_smoothing,
         weight_decay=args.weight_decay,
         max_grad_norm=args.max_grad_norm,
@@ -420,7 +370,7 @@ def main(args):
     )
 
     # Save final fine-tuned model
-    final_model_path = os.path.join(args.output_dir, f"final_model.pth")
+    final_model_path = os.path.join(args.output_dir, "final_model.pth")
     torch.save(model.state_dict(), final_model_path)
     logger.info(f"Saved final fine-tuned model to {final_model_path}")
 
@@ -444,10 +394,6 @@ if __name__ == "__main__":
     parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay")
     parser.add_argument("--warmup_steps", type=int, default=100, help="Warmup steps")
     parser.add_argument("--num_epochs", type=int, default=10, help="Number of epochs")
-    parser.add_argument("--eval_steps", type=int, default=200, help="Evaluation steps")
-    parser.add_argument("--save_steps", type=int, default=15000, help="Save steps")
-    parser.add_argument("--early_stopping_patience", type=int, default=5, help="Early stopping patience")
-    parser.add_argument("--max_checkpoints", type=int, default=2, help="Maximum number of checkpoints to keep")
     parser.add_argument("--label_smoothing", type=float, default=0.1, help="Label smoothing value")
     parser.add_argument("--max_grad_norm", type=float, default=1.0, help="Maximum gradient norm")
     parser.add_argument("--ema_decay", type=float, default=0.9999, help="EMA decay rate (0 to disable)")
@@ -457,7 +403,7 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--tokenizer_name", type=str, default="miscovery/tokenizer", help="Tokenizer name or path")
     parser.add_argument("--checkpoint_path", type=str,
-                        default="stage_01/output/checkpoints/best_model.pth",
+                        default="stage_01/output/model_final.pth",
                         help="Path to pre-trained checkpoint from Stage 1")
     parser.add_argument("--output_dir", type=str, default="stage_02/output",
                         help="Output directory")

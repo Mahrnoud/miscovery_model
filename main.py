@@ -1,13 +1,13 @@
 """
 Enhanced Transformer-based Model for Text Summarization and Translation
 Main training script with improved architecture and training process
+(Modified: Removed evaluation and checkpoint functionality)
 """
 import os
 import random
 
 import sys
 import argparse
-import time
 from datetime import datetime
 
 import numpy as np
@@ -215,7 +215,6 @@ def count_parameters(model):
 
 def main(args):
     # Start time
-    start_time = time.time()
     print(f"Starting script at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
     # Set seed for reproducibility
@@ -224,15 +223,6 @@ def main(args):
     # Load tokenizer
     logger.info(f"Loading tokenizer from {args.tokenizer_name}")
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name)
-
-    # Download NLTK resources if needed
-    nltk.download('punkt')
-    nltk.download('punkt_tab')
-
-    try:
-        nltk.data.find('tokenizers/punkt')
-    except nltk.downloader.DownloadError:
-        nltk.download('punkt')
 
     # Load and process datasets
     logger.info("Loading datasets")
@@ -393,30 +383,19 @@ def main(args):
     # Create directory structure
     logger.info("Setting up directories")
     saving_directory = args.output_dir
-    checkpoint_directory = f"{args.output_dir}/checkpoints"
-    final_model_path = f"{saving_directory}/model_final.pth"
-
     os.makedirs(saving_directory, exist_ok=True)
-    os.makedirs(checkpoint_directory, exist_ok=True)
 
     # Train the model
     logger.info("Starting training")
     model = train_model(
         model=model,
         train_dataloader=train_dataloader,
-        test_dataloader=test_dataloader,
         criterion=criterion,
         optimizer=optimizer,
         scheduler=scheduler,
         device=device,
         epochs=args.num_epochs,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
-        eval_steps=args.eval_steps,
-        save_steps=args.save_steps,
-        checkpoint_dir=checkpoint_directory,
-        early_stopping_patience=args.early_stopping_patience,
-        tokenizer=tokenizer,
-        max_checkpoints=args.max_checkpoints,
         label_smoothing=args.label_smoothing,
         weight_decay=args.weight_decay,
         max_grad_norm=args.max_grad_norm,
@@ -424,8 +403,8 @@ def main(args):
     )
 
     # Save final model
-    logger.info(f"Saving final model to {final_model_path}")
-    torch.save(model.state_dict(), final_model_path)
+    logger.info(f"Saving final model to {saving_directory}/model_final.pth")
+    torch.save(model.state_dict(), f"{saving_directory}/model_final.pth")
     logger.info("Training complete!")
 
 
@@ -448,10 +427,6 @@ if __name__ == "__main__":
     parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay")
     parser.add_argument("--warmup_steps", type=int, default=100, help="Warmup steps")
     parser.add_argument("--num_epochs", type=int, default=5, help="Number of epochs")
-    parser.add_argument("--eval_steps", type=int, default=200, help="Evaluation steps")
-    parser.add_argument("--save_steps", type=int, default=150000, help="Save steps")
-    parser.add_argument("--early_stopping_patience", type=int, default=10, help="Early stopping patience")
-    parser.add_argument("--max_checkpoints", type=int, default=3, help="Maximum number of checkpoints to keep")
     parser.add_argument("--label_smoothing", type=float, default=0.1, help="Label smoothing value")
     parser.add_argument("--max_grad_norm", type=float, default=1.0, help="Maximum gradient norm")
     parser.add_argument("--ema_decay", type=float, default=0.9999, help="EMA decay rate (0 to disable)")
