@@ -451,4 +451,13 @@ if __name__ == "__main__":
     for arg in vars(args):
         logger.info(f"  {arg}: {getattr(args, arg)}")
 
+    # Download NLTK resources if needed
+    nltk.download('punkt')
+    nltk.download('punkt_tab')
+
+    try:
+        nltk.data.find('tokenizers/punkt')
+    except nltk.downloader.DownloadError:
+        nltk.download('punkt')
+
     main(args)
