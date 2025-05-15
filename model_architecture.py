@@ -487,7 +487,7 @@ class CustomTransformerModel(PreTrainedModel, GenerationMixin):
             self,
             prompt,
             tokenizer,
-            max_length=512,
+            max_length=256,
             device='cuda',
             temperature=1.0,
             top_k=50,

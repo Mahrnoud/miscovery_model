@@ -1,7 +1,7 @@
 import torch
 
 
-def generate_text_optimized(model, src, tokenizer, max_length=128, device='cuda',
+def generate_text_optimized(model, src, tokenizer, max_length=256, device='cuda',
                             temperature=1.0, top_k=50, top_p=0.95, repetition_penalty=1.2,
                             do_sample=True):
     """
