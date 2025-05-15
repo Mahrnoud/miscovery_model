@@ -18,7 +18,7 @@ class RMSNorm(nn.Module):
 
 
 class LayerScale(nn.Module):
-    def __init__(self, dim, init_values=1e-5):
+    def __init__(self, dim, init_values=1e-4):
         super().__init__()
         self.gamma = nn.Parameter(init_values * torch.ones(dim))
 
@@ -114,7 +114,7 @@ class MultiHeadAttention(nn.Module):
         self.output_dropout = nn.Dropout(dropout)
 
         # Layer scaling for better gradient flow
-        self.layer_scale = LayerScale(d_model, init_values=1e-5)
+        self.layer_scale = LayerScale(d_model, init_values=1e-4)
 
         self.rotary_emb = RotaryEmbedding(self.depth, max_position_embeddings=max_len)
 
@@ -200,7 +200,7 @@ class FeedForward(nn.Module):
         self.w2 = nn.Linear(d_model, d_ff)
         self.w3 = nn.Linear(d_ff, d_model)
         self.dropout = nn.Dropout(dropout)
-        self.layer_scale = LayerScale(d_model, init_values=1e-5)
+        self.layer_scale = LayerScale(d_model, init_values=1e-4)
 
     def forward(self, x):
         # SwiGLU-like activation

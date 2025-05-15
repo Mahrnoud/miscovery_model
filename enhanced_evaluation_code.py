@@ -2,7 +2,7 @@ import torch
 
 
 def generate_text_optimized(model, src, tokenizer, max_length=256, device='cuda',
-                            temperature=1.0, top_k=50, top_p=0.95, repetition_penalty=1.2,
+                            temperature=1.0, top_k=50, top_p=0.95, repetition_penalty=1.05,
                             do_sample=True):
     """
     Memory-optimized text generation function with early stopping
@@ -107,14 +107,14 @@ def generate_text_optimized(model, src, tokenizer, max_length=256, device='cuda'
                         break
 
                     # Stop for repetition (same token repeated)
-                    if len(repetition_window) >= 4 and len(set(repetition_window[-4:])) == 1:
-                        break
-
+                    # if len(repetition_window) >= 4 and len(set(repetition_window[-4:])) == 1:
+                    #     break
+                    #
                     # Stop for pattern repetition
-                    if len(repetition_window) >= 6:
-                        half = len(repetition_window) // 2
-                        if repetition_window[-half:] == repetition_window[-2 * half:-half]:
-                            break
+                    # if len(repetition_window) >= 6:
+                    #     half = len(repetition_window) // 2
+                    #     if repetition_window[-half:] == repetition_window[-2 * half:-half]:
+                    #         break
 
                 except Exception as e:
                     print(f"Error in generation: {e}")
