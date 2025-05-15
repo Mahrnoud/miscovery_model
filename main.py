@@ -30,6 +30,9 @@ import torch
 from datasets import Dataset, load_dataset, concatenate_datasets
 from langdetect import detect, LangDetectException
 
+# Set tokenizers parallelism too False to avoid warnings
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 # Set up logging
 import logging
 

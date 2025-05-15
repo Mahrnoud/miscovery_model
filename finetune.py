@@ -28,6 +28,8 @@ from model_architecture import Transformer
 from enhanced_training_code import train_model
 from evaluation import ModelEvaluator, evaluate_translations, load_best_model
 
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 # Load tokenizer
 tokenizer = AutoTokenizer.from_pretrained("miscovery/tokenizer")
 

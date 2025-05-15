@@ -6,12 +6,8 @@ import json
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.metrics import f1_score
-from transformers import AutoTokenizer
 import evaluate
-from torch.utils.data import DataLoader
 
-from model_architecture import Transformer
 from enhanced_evaluation_code import generate_text_optimized
 
 
@@ -19,14 +15,15 @@ class ModelEvaluator:
     """
     Evaluator class for Transformer models with metrics tracking and visualization
     """
+
     def __init__(
-        self,
-        model,
-        tokenizer,
-        eval_dataloader,
-        device,
-        output_dir="./outputs",
-        max_checkpoints=2
+            self,
+            model,
+            tokenizer,
+            eval_dataloader,
+            device,
+            output_dir="./outputs",
+            max_checkpoints=2
     ):
         self.model = model
         self.tokenizer = tokenizer
@@ -97,7 +94,7 @@ class ModelEvaluator:
                         for i in range(min(2, len(src))):
                             generated_text = generate_text_optimized(
                                 self.model,
-                                src[i:i+1],
+                                src[i:i + 1],
                                 self.tokenizer,
                                 max_length=512,
                                 device=self.device,
@@ -120,18 +117,43 @@ class ModelEvaluator:
         avg_loss = total_loss / len(self.eval_dataloader)
 
         # Calculate ROUGE scores
-        rouge_output = self.rouge.compute(
-            predictions=all_preds,
-            references=all_labels
-        )
+        try:
+            rouge_output = self.rouge.compute(
+                predictions=all_preds,
+                references=all_labels
+            )
+        except Exception as e:
+            print(f"ROUGE computation failed: {e}")
+            # Provide default values if computation fails
+            rouge_output = {
+                "rouge1": 0.0,
+                "rouge2": 0.0,
+                "rougeL": 0.0
+            }
 
         # Calculate BLEU score
+        # For BLEU in the new evaluate library, references need to be a list of lists of strings
+        # But predictions should be a list of strings
         tokenized_references = [[r.split()] for r in all_labels]
         tokenized_predictions = [p.split() for p in all_preds]
-        bleu_score = self.bleu.compute(
-            predictions=tokenized_predictions,
-            references=tokenized_references
-        )['bleu']
+
+        try:
+            # First try with the expected format from the error message
+            bleu_score = self.bleu.compute(
+                predictions=[' '.join(p) for p in tokenized_predictions],
+                references=[[' '.join(r[0])] for r in tokenized_references]
+            )['bleu']
+        except Exception as e:
+            print(f"First BLEU computation attempt failed, trying alternative format: {e}")
+            try:
+                # Fall back to simpler format
+                bleu_score = self.bleu.compute(
+                    predictions=all_preds,
+                    references=[[r] for r in all_labels]
+                )['bleu']
+            except Exception as e:
+                print(f"Second BLEU computation attempt failed: {e}")
+                bleu_score = 0.0  # Default value if computation fails
 
         # Calculate F1 score (token level)
         # This is a simplified token-level F1 calculation
@@ -189,7 +211,8 @@ class ModelEvaluator:
         with open(os.path.join(self.output_dir, "metrics_history.json"), "w") as f:
             json.dump(self.metrics_history, f, indent=2)
 
-        # Save checkpoint based on ROUGE-L score
+        # Save checkpoint based on a combined score
+        # Use a simpler formula that's less likely to fail
         combined_score = metrics["rougeL"] * 0.6 + metrics["bleu"] * 0.3 + metrics["f1"] * 0.1
 
         if combined_score > self.best_score:

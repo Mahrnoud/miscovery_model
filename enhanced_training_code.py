@@ -269,7 +269,7 @@ def plot_training_history(train_losses, eval_metrics, output_dir):
 
     # Create steps for x-axis
     train_steps = list(range(1, len(train_losses) + 1))
-    eval_steps = [int(len(train_losses) * (i + 1) / len(eval_metrics)) for i in range(len(eval_metrics))]
+    eval_steps = [int(len(train_losses) * (i+1) / len(eval_metrics)) for i in range(len(eval_metrics))]
 
     # Extract evaluation metrics
     eval_losses = [m["eval_loss"] for m in eval_metrics]
