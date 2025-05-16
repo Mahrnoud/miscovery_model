@@ -723,11 +723,17 @@ def prepare_high_quality_training_dataset(tokenizer, args):
     if len(raw_datasets['train']) > 0:
         samples = raw_datasets['train'].shuffle(seed=args.seed).select(range(min(5, len(raw_datasets['train']))))
         logger.info("\n=== Sample Training Prompt/Response Pairs ===")
+        print("=== Sample Training Prompt/Response Pairs ===")
         for i, sample in enumerate(samples):
             logger.info(f"\nPair {i + 1}:")
             logger.info(f"Prompt: {sample['prompt']}")
             logger.info(f"Response: {sample['response']}")
             logger.info("-" * 40)
+            print(f"Pair {i + 1}:")
+            print(f"Prompt: {sample['prompt']}")
+            print(f"Response: {sample['response']}")
+            print("-" * 40)
+
 
     return raw_datasets
 
