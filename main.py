@@ -151,7 +151,7 @@ def create_shuffled_sentence_pairs(examples, tokenizer,
     return {"prompt": prompts, "response": responses}
 
 
-def create_tensor_datasets(prompts, responses, tokenizer, max_length=512, cache_file=None):
+def create_tensor_datasets(prompts, responses, tokenizer, max_length=256, cache_file=None):
     # First check if we should load from cache
     if cache_file and os.path.exists(cache_file):
         logger.info(f"Loading preprocessed tensors from {cache_file}")
