@@ -9,28 +9,22 @@ import argparse
 from datetime import datetime
 
 import numpy as np
+import torch
 # Standard library imports
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset
-from tqdm import tqdm
-from transformers import (
-    AutoTokenizer,
-    get_cosine_schedule_with_warmup
-)
+from torch.utils.data import DataLoader
+from transformers import AutoTokenizer, get_cosine_schedule_with_warmup
 
 # Import our model and training utilities
 from model_architecture import Transformer
-from enhanced_training_code import train_model, get_cosine_schedule_with_warmup
+from enhanced_training_code import train_model
 from evaluation import ModelEvaluator, evaluate_translations, load_best_model
 
-# Dataset preprocessing imports
-import nltk
-import torch
-from datasets import Dataset, load_dataset, concatenate_datasets
-from langdetect import detect, LangDetectException
+# Import dataset preprocessing
+from dataset_preprocessing import prepare_training_dataset, get_tensor_datasets
 
-# Set tokenizers parallelism too False to avoid warnings
+# Set tokenizers parallelism to False to avoid warnings
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 # Set up logging
@@ -58,150 +52,6 @@ def set_seed(seed):
         torch.backends.cudnn.benchmark = False
 
 
-# Re-using your original dataset preprocessing functions
-# Note: This section would include your original preprocessing code
-# that you asked to keep the same
-MAX_SEQ_LENGTH = 128
-MIN_WORDS_FOR_SHUFFLE = 4
-
-
-# Helper functions for text processing
-def is_english(text):
-    try:
-        sample_text = text[:500].replace("[LANG_EN]", "").replace("[LANG_AR]", "").strip()
-        if not sample_text:
-            return any(ord(char) < 128 for char in text)
-        return detect(sample_text) == 'en'
-    except LangDetectException:
-        ascii_chars = sum(1 for char in text if ord(char) < 128)
-        total_chars = len(text)
-        if total_chars == 0: return True
-        return (ascii_chars / total_chars) > 0.5
-
-
-def shuffle_words_in_text(text):
-    words = text.split()
-    if len(words) < MIN_WORDS_FOR_SHUFFLE:
-        return text, False
-    shuffled_words = words[:]
-    random.shuffle(shuffled_words)
-    if shuffled_words == words and len(words) > 1:
-        idx1, idx2 = random.sample(range(len(words)), 2)
-        shuffled_words[idx1], shuffled_words[idx2] = shuffled_words[idx2], shuffled_words[idx1]
-    return " ".join(shuffled_words), True
-
-
-# Core preprocessing function for creating sentence pairs
-def create_shuffled_sentence_pairs(examples, tokenizer,
-                                   max_length=MAX_SEQ_LENGTH,
-                                   add_special_tokens=True):
-    prompts = []
-    responses = []
-    skipped_sentences = 0
-    processed_articles = 0
-
-    text_key = 'article' if 'article' in examples else 'text'
-    if text_key not in examples:
-        raise KeyError(f"Could not find 'article' or 'text' column in examples: {list(examples.keys())}")
-
-    article_iterator = examples[text_key]
-
-    for article_text in article_iterator:
-        processed_articles += 1
-        if article_text is None or not isinstance(article_text, str) or not article_text.strip():
-            continue
-
-        lang_tag = "[LANG_EN]" if is_english(article_text) else "[LANG_AR]"
-
-        try:
-            sentences = nltk.sent_tokenize(article_text)
-        except Exception as e:
-            continue
-
-        for original_sentence in sentences:
-            original_sentence = original_sentence.strip()
-            if not original_sentence:
-                continue
-
-            shuffled_sentence, was_shuffled = shuffle_words_in_text(original_sentence)
-            if not was_shuffled:
-                skipped_sentences += 1
-                continue
-
-            prompt_core = shuffled_sentence
-            response_core = original_sentence
-
-            if add_special_tokens:
-                prompt_str = f"{lang_tag} {prompt_core}"
-                response_str = f"{lang_tag} {response_core}"
-            else:
-                prompt_str = prompt_core
-                response_str = response_core
-
-            prompt_tokens = tokenizer(prompt_str, max_length=max_length, truncation=True, padding=False)["input_ids"]
-            response_tokens = tokenizer(response_str, max_length=max_length, truncation=True, padding=False)[
-                "input_ids"]
-
-            final_prompt_str = tokenizer.decode(prompt_tokens, skip_special_tokens=False)
-            final_response_str = tokenizer.decode(response_tokens, skip_special_tokens=False)
-
-            prompts.append(final_prompt_str)
-            responses.append(final_response_str)
-
-    return {"prompt": prompts, "response": responses}
-
-
-def create_tensor_datasets(prompts, responses, tokenizer, max_length=256, cache_file=None):
-    # First check if we should load from cache
-    if cache_file and os.path.exists(cache_file):
-        logger.info(f"Loading preprocessed tensors from {cache_file}")
-        try:
-            return torch.load(cache_file, weights_only=False)
-        except Exception as e:
-            logger.warning(f"Error loading cache file: {e}")
-            logger.info("Falling back to processing data from scratch")
-
-    logger.info("Processing data into tensors...")
-    input_tensors = []
-    target_tensors = []
-
-    for p, r in tqdm(zip(prompts, responses), total=len(prompts), desc="Creating tensors"):
-        input_encoding = tokenizer(
-            p,
-            max_length=max_length,
-            padding='max_length',
-            truncation=True,
-            return_tensors="pt",
-            add_special_tokens=True
-        )
-        target_encoding = tokenizer(
-            r,
-            max_length=max_length,
-            padding='max_length',
-            truncation=True,
-            return_tensors="pt",
-            add_special_tokens=True
-        )
-        input_tensors.append(input_encoding["input_ids"].squeeze(0))
-        target_tensors.append(target_encoding["input_ids"].squeeze(0))
-
-    input_tensors = torch.stack(input_tensors)
-    target_tensors = torch.stack(target_tensors)
-
-    dataset = TensorDataset(input_tensors, target_tensors)
-
-    if cache_file:
-        logger.info(f"Saving preprocessed tensors to {cache_file}")
-        os.makedirs(os.path.dirname(cache_file), exist_ok=True)
-        try:
-            torch.save(dataset, cache_file)
-        except Exception as e:
-            logger.warning(f"Failed to save cache file: {e}")
-            logger.info("Continuing without caching")
-
-    return dataset
-
-
 def count_parameters(model):
     total = sum(p.numel() for p in model.parameters() if p.requires_grad)
     if total >= 1_000_000_000:
@@ -211,7 +61,6 @@ def count_parameters(model):
     else:
         logger.info(f"Model Parameters: {total:,}")
 
-    print(f"Model Parameters: {total}")
     return total
 
 
@@ -226,94 +75,18 @@ def main(args):
     logger.info(f"Loading tokenizer from {args.tokenizer_name}")
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name)
 
-    # Load and process datasets
-    logger.info("Loading datasets")
-    en_dataset_stream = load_dataset("abisee/cnn_dailymail", "3.0.0", split="train", streaming=True)
-    ar_dataset_stream = load_dataset("csebuetnlp/xlsum", "arabic", split="train", streaming=True)
+    # Load and process datasets using the separate dataset preprocessing module
+    logger.info("Preparing datasets")
+    raw_datasets = prepare_training_dataset(tokenizer, args)
 
-    # Sample from datasets
-    NUM_SAMPLES_PER_LANG = args.samples_per_lang
-    logger.info(f"Sampling {NUM_SAMPLES_PER_LANG} examples from each language dataset")
-
-    en_samples = list(en_dataset_stream.take(NUM_SAMPLES_PER_LANG))
-    ar_samples = list(ar_dataset_stream.take(NUM_SAMPLES_PER_LANG))
-
-    en_temp_dataset = Dataset.from_dict(
-        {'article': [sample['article'] for sample in en_samples if sample.get('article')]})
-    ar_temp_dataset = Dataset.from_dict({'text': [sample['text'] for sample in ar_samples if sample.get('text')]})
-
-    # Process datasets
-    logger.info("Processing English dataset")
-    processed_en_dataset = en_temp_dataset.map(
-        lambda examples: create_shuffled_sentence_pairs(
-            examples,
-            tokenizer=tokenizer,
-            max_length=args.max_seq_length,
-            add_special_tokens=True,
-        ),
-        batched=True,
-        batch_size=64,
-        remove_columns=en_temp_dataset.column_names
-    )
-
-    logger.info("Processing Arabic dataset")
-    processed_ar_dataset = ar_temp_dataset.map(
-        lambda examples: create_shuffled_sentence_pairs(
-            examples,
-            tokenizer=tokenizer,
-            max_length=args.max_seq_length,
-            add_special_tokens=True,
-        ),
-        batched=True,
-        batch_size=64,
-        remove_columns=ar_temp_dataset.column_names
-    )
-
-    # Split datasets into train and test
-    test_size_ar = int(len(processed_ar_dataset) * args.test_split)
-    test_size_en = int(len(processed_en_dataset) * args.test_split)
-
-    test_ar_dataset = processed_ar_dataset.select(range(test_size_ar))
-    test_en_dataset = processed_en_dataset.select(range(test_size_en))
-
-    # Merge datasets
-    test_dataset = concatenate_datasets([test_ar_dataset, test_en_dataset])
-    merged_train_dataset = concatenate_datasets([processed_ar_dataset, processed_en_dataset]).shuffle(seed=args.seed)
-
-    # Final datasets
-    raw_datasets = {
-        "train": merged_train_dataset,
-        "test": test_dataset
-    }
-
-    # Create tensor datasets
-    logger.info("Creating tensor datasets")
-    cache_dir = args.cache_dir
-    train_cache_file = f"{cache_dir}/train_tensors_{args.max_seq_length}.pt"
-    test_cache_file = f"{cache_dir}/test_tensors_{args.max_seq_length}.pt"
-
-    os.makedirs(cache_dir, exist_ok=True)
-
-    dataset = create_tensor_datasets(
-        raw_datasets['train']['prompt'],
-        raw_datasets['train']['response'],
-        tokenizer,
-        max_length=args.max_seq_length,
-        cache_file=train_cache_file
-    )
-
-    test_dataset = create_tensor_datasets(
-        raw_datasets['test']['prompt'],
-        raw_datasets['test']['response'],
-        tokenizer,
-        max_length=args.max_seq_length,
-        cache_file=test_cache_file
-    )
+    # Convert to tensor datasets
+    logger.info("Converting to tensor datasets")
+    tensor_datasets = get_tensor_datasets(raw_datasets, tokenizer, args)
 
     # Create dataloaders
     logger.info("Creating dataloaders")
     train_dataloader = DataLoader(
-        dataset,
+        tensor_datasets["train"],
         batch_size=args.batch_size,
         shuffle=True,
         num_workers=args.num_workers,
@@ -321,7 +94,7 @@ def main(args):
     )
 
     test_dataloader = DataLoader(
-        test_dataset,
+        tensor_datasets["test"],
         batch_size=args.batch_size,
         shuffle=False,
         num_workers=args.num_workers,
@@ -474,14 +247,5 @@ if __name__ == "__main__":
     logger.info("Training with the following parameters:")
     for arg in vars(args):
         logger.info(f"  {arg}: {getattr(args, arg)}")
-
-    # Download NLTK resources if needed
-    nltk.download('punkt')
-    nltk.download('punkt_tab')
-
-    try:
-        nltk.data.find('tokenizers/punkt')
-    except nltk.downloader.DownloadError:
-        nltk.download('punkt')
 
     main(args)
