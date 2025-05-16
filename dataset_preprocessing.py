@@ -7,7 +7,6 @@ import os
 import random
 import re
 import logging
-import numpy as np
 import pandas as pd
 import torch
 from datasets import Dataset, load_dataset, concatenate_datasets
@@ -87,10 +86,10 @@ def inspect_sample_examples(dataset, num_samples=5, text_key='article'):
     for i, sample in enumerate(samples):
         text = sample[text_key]
         if not isinstance(text, str):
-            logger.warning(f"Example {i+1}: Invalid text type: {type(text)}")
+            logger.warning(f"Example {i + 1}: Invalid text type: {type(text)}")
             continue
 
-        logger.info(f"\nExample {i+1}:")
+        logger.info(f"\nExample {i + 1}:")
         logger.info(f"Length: {len(text)} characters")
 
         # Print the first 500 characters to get a sense of the content
@@ -248,7 +247,6 @@ def clean_and_filter_dataset(dataset, text_key='article', min_length=100, max_le
 
 def check_english_quality(example, text_key='article'):
     """Additional quality checks specific to English texts."""
-    import re
 
     text = example[text_key]
     if not isinstance(text, str):
@@ -475,7 +473,8 @@ def create_shuffled_sentence_pairs(examples, tokenizer, max_length=MAX_SEQ_LENGT
                 response_str = response_core
 
             prompt_tokens = tokenizer(prompt_str, max_length=max_length, truncation=True, padding=False)["input_ids"]
-            response_tokens = tokenizer(response_str, max_length=max_length, truncation=True, padding=False)["input_ids"]
+            response_tokens = tokenizer(response_str, max_length=max_length, truncation=True, padding=False)[
+                "input_ids"]
 
             final_prompt_str = tokenizer.decode(prompt_tokens, skip_special_tokens=False)
             final_response_str = tokenizer.decode(response_tokens, skip_special_tokens=False)
@@ -597,7 +596,7 @@ def prepare_high_quality_training_dataset(tokenizer, args):
     # Ensure NLTK resources are available
     try:
         nltk.data.find('tokenizers/punkt')
-    except (LookupError, nltk.downloader.DownloadError):
+    except:
         nltk.download('punkt')
         nltk.download('punkt_tab')
 
@@ -636,15 +635,15 @@ def prepare_high_quality_training_dataset(tokenizer, args):
     logger.info("Applying language-specific quality filters to English dataset...")
     high_quality_en = cleaned_en_dataset.filter(
         lambda ex: check_english_quality(ex, text_key='article') and
-                  not detect_template_or_boilerplate(ex, text_key='article') and
-                  not detect_low_information_content(ex, text_key='article')
+                   not detect_template_or_boilerplate(ex, text_key='article') and
+                   not detect_low_information_content(ex, text_key='article')
     )
 
     logger.info("Applying language-specific quality filters to Arabic dataset...")
     high_quality_ar = cleaned_ar_dataset.filter(
         lambda ex: check_arabic_quality(ex, text_key='text') and
-                  not detect_template_or_boilerplate(ex, text_key='text') and
-                  not detect_low_information_content(ex, text_key='text')
+                   not detect_template_or_boilerplate(ex, text_key='text') and
+                   not detect_low_information_content(ex, text_key='text')
     )
 
     # Inspect datasets after cleaning
@@ -725,7 +724,7 @@ def prepare_high_quality_training_dataset(tokenizer, args):
         samples = raw_datasets['train'].shuffle(seed=args.seed).select(range(min(5, len(raw_datasets['train']))))
         logger.info("\n=== Sample Training Prompt/Response Pairs ===")
         for i, sample in enumerate(samples):
-            logger.info(f"\nPair {i+1}:")
+            logger.info(f"\nPair {i + 1}:")
             logger.info(f"Prompt: {sample['prompt']}")
             logger.info(f"Response: {sample['response']}")
             logger.info("-" * 40)
