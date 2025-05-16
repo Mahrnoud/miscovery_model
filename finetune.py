@@ -199,7 +199,20 @@ def load_checkpoint(checkpoint_path, model, optimizer=None, device="cuda"):
     """Load model and optimizer state from checkpoint."""
     logger.info(f"Loading model from {checkpoint_path}")
 
-    checkpoint = torch.load(checkpoint_path, map_location=device)
+    # Set weights_only=False explicitly to handle the error
+    try:
+        # First try with weights_only=False
+        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+        logger.info("Successfully loaded checkpoint with weights_only=False")
+    except Exception as e:
+        logger.warning(f"Error loading with weights_only=False: {e}")
+        # If that fails, try with weights_only=True
+        try:
+            checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
+            logger.info("Successfully loaded checkpoint with weights_only=True")
+        except Exception as e2:
+            logger.error(f"Failed to load checkpoint with both options: {e2}")
+            raise e2
 
     # Load model state
     if "model_state_dict" in checkpoint:
@@ -260,7 +273,7 @@ def main(args):
 
     # Load pre-trained model from Stage 1 if specified
     if args.checkpoint_path:
-        model = load_checkpoint(args.checkpoint_path, model, device)
+        model = load_checkpoint(args.checkpoint_path, model, optimizer, device)
 
     # Create tensor datasets
     logger.info("Creating tensor datasets")
