@@ -452,8 +452,8 @@ if __name__ == "__main__":
     parser.add_argument("--num_workers", type=int, default=2, help="Number of dataloader workers")
 
     # Evaluation parameters (new)
-    parser.add_argument("--eval_steps", type=int, default=500, help="Evaluate every N steps")
-    parser.add_argument("--save_steps", type=int, default=1200, help="Save checkpoint every N steps")
+    parser.add_argument("--eval_steps", type=int, default=200, help="Evaluate every N steps")
+    parser.add_argument("--save_steps", type=int, default=100000, help="Save checkpoint every N steps")
     parser.add_argument("--max_checkpoints", type=int, default=2, help="Maximum number of checkpoints to keep")
 
     # Dataset parameters

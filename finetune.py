@@ -425,7 +425,7 @@ if __name__ == "__main__":
 
     # Training parameters
     parser.add_argument("--batch_size", type=int, default=4, help="Batch size")
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=2, help="Gradient accumulation steps")
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=1, help="Gradient accumulation steps")
     parser.add_argument("--learning_rate", type=float, default=1e-6, help="Learning rate for fine-tuning")
     parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay")
     parser.add_argument("--warmup_steps", type=int, default=100, help="Warmup steps")
@@ -436,15 +436,15 @@ if __name__ == "__main__":
     parser.add_argument("--num_workers", type=int, default=4, help="Number of dataloader workers")
 
     # Evaluation parameters (new)
-    parser.add_argument("--eval_steps", type=int, default=200, help="Evaluate every N steps")
-    parser.add_argument("--save_steps", type=int, default=500, help="Save checkpoint every N steps")
+    parser.add_argument("--eval_steps", type=int, default=100, help="Evaluate every N steps")
+    parser.add_argument("--save_steps", type=int, default=100000, help="Save checkpoint every N steps")
     parser.add_argument("--max_checkpoints", type=int, default=2, help="Maximum number of checkpoints to keep")
 
     # Other parameters
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--tokenizer_name", type=str, default="miscovery/tokenizer", help="Tokenizer name or path")
     parser.add_argument("--checkpoint_path", type=str,
-                        default="stage_01/output/model_final.pth",
+                        default="stage_01/output/best_model.pth",
                         help="Path to pre-trained checkpoint from Stage 1")
     parser.add_argument("--output_dir", type=str, default="stage_02/output",
                         help="Output directory")

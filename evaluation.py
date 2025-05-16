@@ -96,7 +96,7 @@ class ModelEvaluator:
                                 self.model,
                                 src[i:i + 1],
                                 self.tokenizer,
-                                max_length=512,
+                                max_length=256,
                                 device=self.device,
                                 do_sample=True
                             )
@@ -397,7 +397,7 @@ def evaluate_translations(model, test_dataloader, tokenizer, device, num_example
                 model,
                 src[0:1],
                 tokenizer,
-                max_length=512,
+                max_length=256,
                 device=device,
                 do_sample=False  # Use greedy decoding for consistency
             )
