@@ -184,6 +184,10 @@ def train_model(model, train_dataloader, criterion, optimizer, scheduler,
                 scaler.update()
                 scheduler.step()
 
+                if global_step % 10 == 0:
+                    current_lr = scheduler.get_last_lr()[0]
+                    print(f"\nStep {global_step} - Current learning rate: {current_lr:.8f}")
+
                 # Update EMA if enabled
                 if ema is not None:
                     ema.update()

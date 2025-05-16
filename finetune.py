@@ -195,12 +195,9 @@ def set_seed(seed):
         torch.backends.cudnn.benchmark = False
 
 
-def load_checkpoint(checkpoint_path, model, device="cuda"):
-    """Load model from checkpoint (simplified - only loads state dict)."""
+def load_checkpoint(checkpoint_path, model, optimizer=None, device="cuda"):
+    """Load model and optimizer state from checkpoint."""
     logger.info(f"Loading model from {checkpoint_path}")
-
-    if not os.path.exists(checkpoint_path):
-        raise FileNotFoundError(f"Checkpoint file not found: {checkpoint_path}")
 
     checkpoint = torch.load(checkpoint_path, map_location=device)
 
@@ -208,8 +205,15 @@ def load_checkpoint(checkpoint_path, model, device="cuda"):
     if "model_state_dict" in checkpoint:
         model.load_state_dict(checkpoint["model_state_dict"])
     else:
-        # For compatibility with older checkpoints
         model.load_state_dict(checkpoint)
+
+    # Load optimizer state if provided
+    if optimizer is not None and "optimizer_state_dict" in checkpoint:
+        try:
+            optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+            logger.info("Optimizer state loaded successfully")
+        except Exception as e:
+            logger.warning(f"Failed to load optimizer state: {e}")
 
     logger.info(f"Model loaded successfully")
     return model
@@ -310,10 +314,12 @@ def main(args):
     total_steps = len(train_dataloader) * args.num_epochs // args.gradient_accumulation_steps
 
     # Calculate warmup steps as a ratio of total training steps
-    if args.lr_warmup_ratio > 0:
-        args.warmup_steps = int(total_steps * args.lr_warmup_ratio)
-    else:
-        args.warmup_steps = args.warmup_steps  # Use the existing value
+    # if args.lr_warmup_ratio > 0:
+    #     args.warmup_steps = int(total_steps * args.lr_warmup_ratio)
+    # else:
+    #     args.warmup_steps = args.warmup_steps  # Use the existing value
+
+    args.warmup_steps = min(100, int(total_steps * 0.05))
 
     # Initialize the appropriate scheduler based on type
     if args.lr_scheduler_type == "cosine":
@@ -426,7 +432,7 @@ if __name__ == "__main__":
     # Training parameters
     parser.add_argument("--batch_size", type=int, default=4, help="Batch size")
     parser.add_argument("--gradient_accumulation_steps", type=int, default=1, help="Gradient accumulation steps")
-    parser.add_argument("--learning_rate", type=float, default=1e-6, help="Learning rate for fine-tuning")
+    parser.add_argument("--learning_rate", type=float, default=1e-5, help="Learning rate for fine-tuning")
     parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay")
     parser.add_argument("--warmup_steps", type=int, default=100, help="Warmup steps")
     parser.add_argument("--num_epochs", type=int, default=10, help="Number of epochs")
@@ -461,7 +467,7 @@ if __name__ == "__main__":
                         help="Number of steps between LR decreases in step scheduler")
     parser.add_argument("--min_lr_ratio", type=float, default=0.1,
                         help="Minimum learning rate as a fraction of initial LR")
-    parser.add_argument("--lr_warmup_ratio", type=float, default=0.1,
+    parser.add_argument("--lr_warmup_ratio", type=float, default=0.05,
                         help="Portion of training to use for warmup (as a ratio of total steps)")
 
     args, unknown = parser.parse_known_args()
