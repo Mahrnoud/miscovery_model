@@ -152,7 +152,7 @@ def main(args):
         optimizer,
         num_warmup_steps=args.warmup_steps,
         num_training_steps=total_steps,
-        min_lr_ratio=0.1  # Minimum learning rate will be 10% of max
+        # min_lr_ratio=0.1  # Minimum learning rate will be 10% of max
     )
 
     # Create directory structure
