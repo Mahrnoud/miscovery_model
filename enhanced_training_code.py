@@ -200,8 +200,8 @@ def train_model(model, train_dataloader, criterion, optimizer, scheduler,
                 train_losses.append(loss.item() * gradient_accumulation_steps)
 
                 # Log info periodically
-                if global_step % 100 == 0:
-                    print(f"\nStep {global_step} - Current learning rate: {current_lr:.7f}")
+                # if global_step % 100 == 0:
+                #     print(f"\nStep {global_step} - Current learning rate: {current_lr:.7f}")
 
                 # Run evaluation at specified intervals
                 if evaluator and global_step % eval_steps == 0:
