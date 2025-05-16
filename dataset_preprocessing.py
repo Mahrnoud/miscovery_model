@@ -747,7 +747,7 @@ def prepare_training_dataset(tokenizer, args):
     # Ensure NLTK resources are available
     try:
         nltk.data.find('tokenizers/punkt')
-    except (LookupError, nltk.downloader.DownloadError):
+    except:
         nltk.download('punkt')
         nltk.download('punkt_tab')
 
