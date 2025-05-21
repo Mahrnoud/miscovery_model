@@ -311,7 +311,7 @@ if __name__ == "__main__":
 
     # Other parameters
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
-    parser.add_argument("--tokenizer_name", type=str, default="miscovery/tokenizer", help="Tokenizer name or path")
+    parser.add_argument("--tokenizer_name", type=str, default="miscovery/tokenizer_v2", help="Tokenizer name or path")
     parser.add_argument("--checkpoint_path", type=str,
                         default="stage_01/output/best_model.pth",
                         help="Path to pre-trained checkpoint from Stage 1")
