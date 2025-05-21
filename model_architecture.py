@@ -503,7 +503,7 @@ class CustomTransformerModel(PreTrainedModel, GenerationMixin):
         input_ids = tokenizer(
             prompt,
             return_tensors="pt",
-            max_length=512,
+            max_length=256,
             padding='max_length',
             truncation=True
         )["input_ids"].to(device)

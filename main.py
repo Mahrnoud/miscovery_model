@@ -210,22 +210,22 @@ if __name__ == "__main__":
     parser.add_argument("--num_encoder_layers", type=int, default=12, help="Number of encoder layers")
     parser.add_argument("--num_decoder_layers", type=int, default=12, help="Number of decoder layers")
     parser.add_argument("--max_seq_length", type=int, default=256, help="Maximum sequence length")
-    parser.add_argument("--dropout", type=float, default=0.1, help="Dropout rate")
+    parser.add_argument("--dropout", type=float, default=0.05, help="Dropout rate")
 
     # Training parameters
     parser.add_argument("--batch_size", type=int, default=2, help="Batch size")
     parser.add_argument("--gradient_accumulation_steps", type=int, default=2, help="Gradient accumulation steps")
     parser.add_argument("--learning_rate", type=float, default=1e-4, help="Learning rate")
     parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay")
-    parser.add_argument("--warmup_steps", type=int, default=10, help="Warmup steps")
-    parser.add_argument("--num_epochs", type=int, default=3, help="Number of epochs")
+    parser.add_argument("--warmup_steps", type=int, default=100, help="Warmup steps")
+    parser.add_argument("--num_epochs", type=int, default=5, help="Number of epochs")
     parser.add_argument("--label_smoothing", type=float, default=0.1, help="Label smoothing value")
     parser.add_argument("--max_grad_norm", type=float, default=1.0, help="Maximum gradient norm")
     parser.add_argument("--ema_decay", type=float, default=0.9999, help="EMA decay rate (0 to disable)")
     parser.add_argument("--num_workers", type=int, default=2, help="Number of dataloader workers")
 
     # Evaluation parameters (new)
-    parser.add_argument("--eval_steps", type=int, default=1000, help="Evaluate every N steps")
+    parser.add_argument("--eval_steps", type=int, default=2000, help="Evaluate every N steps")
     parser.add_argument("--save_steps", type=int, default=100000, help="Save checkpoint every N steps")
     parser.add_argument("--max_checkpoints", type=int, default=2, help="Maximum number of checkpoints to keep")
 
