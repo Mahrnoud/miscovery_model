@@ -77,7 +77,7 @@ def main(args):
 
     # Load and process datasets using the separate dataset preprocessing module
     logger.info("Preparing datasets")
-    raw_datasets = prepare_high_quality_training_dataset(tokenizer, args)
+    raw_datasets = prepare_high_quality_training_dataset("/content/datasets")
 
     # Convert to tensor datasets
     logger.info("Converting to tensor datasets")

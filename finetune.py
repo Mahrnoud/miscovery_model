@@ -27,7 +27,7 @@ from enhanced_training_code import train_model
 from evaluation import ModelEvaluator, evaluate_translations, load_best_model
 
 # Import dataset preprocessing
-from dataset_preprocessing import prepare_finetuning_dataset, get_tensor_datasets
+from dataset_preprocessing import prepare_high_quality_training_dataset, get_tensor_datasets
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -136,7 +136,7 @@ def main(args):
 
     # Load and process datasets using the separate dataset preprocessing module
     logger.info("Preparing datasets for fine-tuning")
-    raw_datasets = prepare_finetuning_dataset(tokenizer, args)
+    raw_datasets = prepare_high_quality_training_dataset("/content/datasets")
 
     # Convert to tensor datasets
     logger.info("Converting to tensor datasets")
