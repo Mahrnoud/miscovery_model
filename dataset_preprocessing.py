@@ -734,7 +734,6 @@ def prepare_high_quality_training_dataset(tokenizer, args):
             print(f"Response: {sample['response']}")
             print("-" * 40)
 
-
     return raw_datasets
 
 
