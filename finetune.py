@@ -18,6 +18,8 @@ import os
 import argparse
 import numpy as np
 
+from custom_lr_scheduler import create_custom_scheduler
+
 # Set up logging
 import logging
 
@@ -51,6 +53,24 @@ def set_seed(seed):
         torch.cuda.manual_seed_all(seed)
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
+
+
+def initialize_scheduler_finetune(optimizer, args, total_steps):
+    """
+    Initialize learning rate scheduler for fine-tuning
+    """
+    print(f"Initializing {args.lr_scheduler_type} scheduler for fine-tuning with:")
+    print(f"  - Total steps: {total_steps}")
+    print(f"  - Warmup steps: {args.warmup_steps}")
+    print(f"  - Initial LR: {args.learning_rate}")
+
+    if hasattr(args, 'min_lr_ratio'):
+        print(f"  - Min LR ratio: {args.min_lr_ratio}")
+        print(f"  - Min LR: {args.learning_rate * args.min_lr_ratio}")
+    if hasattr(args, 'decay_start_step'):
+        print(f"  - Decay start step: {args.decay_start_step}")
+
+    return create_custom_scheduler(optimizer, args, total_steps)
 
 
 def load_checkpoint(checkpoint_path, model, optimizer=None, device="cuda"):
@@ -173,37 +193,7 @@ def main(args):
     args.warmup_steps = min(100, int(total_steps * 0.05))
 
     # Initialize the appropriate scheduler based on type
-    if args.lr_scheduler_type == "cosine":
-        scheduler = get_cosine_schedule_with_warmup(
-            optimizer,
-            num_warmup_steps=args.warmup_steps,
-            num_training_steps=total_steps
-        )
-    elif args.lr_scheduler_type == "linear":
-        scheduler = get_linear_schedule_with_warmup(
-            optimizer,
-            num_warmup_steps=args.warmup_steps,
-            num_training_steps=total_steps
-        )
-    elif args.lr_scheduler_type == "constant":
-        scheduler = get_constant_schedule_with_warmup(
-            optimizer,
-            num_warmup_steps=args.warmup_steps
-        )
-    elif args.lr_scheduler_type == "polynomial":
-        scheduler = get_polynomial_decay_schedule_with_warmup(
-            optimizer,
-            num_warmup_steps=args.warmup_steps,
-            num_training_steps=total_steps,
-            lr_end=args.learning_rate * args.min_lr_ratio,
-            power=1.0
-        )
-    else:
-        scheduler = get_cosine_schedule_with_warmup(
-            optimizer,
-            num_warmup_steps=args.warmup_steps,
-            num_training_steps=total_steps
-        )
+    scheduler = initialize_scheduler_finetune(optimizer, args, total_steps)
 
     # Initialize loss function with label smoothing
     criterion = nn.CrossEntropyLoss(
@@ -298,16 +288,21 @@ if __name__ == "__main__":
 
     # Learning rate scheduler parameters
     parser.add_argument("--lr_scheduler_type", type=str, default="cosine",
-                        choices=["cosine", "linear", "constant", "polynomial"],
+                        choices=["constant", "linear_decay_to_min", "cosine_decay_to_min",
+                                 "step_decay_to_min", "cosine", "linear"],
                         help="Learning rate scheduler type")
-    parser.add_argument("--lr_decay_factor", type=float, default=0.1,
-                        help="Factor to reduce LR by when using step scheduler")
+
+    parser.add_argument("--min_lr_ratio", type=float, default=0.1,
+                        help="Minimum learning rate as ratio of initial LR (for decay schedulers)")
+
+    parser.add_argument("--decay_start_step", type=int, default=0,
+                        help="Step to start LR decay (0 = start immediately after warmup)")
+
+    parser.add_argument("--lr_decay_factor", type=float, default=0.5,
+                        help="Factor to multiply LR by in step decay scheduler")
+
     parser.add_argument("--lr_step_size", type=int, default=1000,
                         help="Number of steps between LR decreases in step scheduler")
-    parser.add_argument("--min_lr_ratio", type=float, default=0.1,
-                        help="Minimum learning rate as a fraction of initial LR")
-    parser.add_argument("--lr_warmup_ratio", type=float, default=0.05,
-                        help="Portion of training to use for warmup (as a ratio of total steps)")
 
     # Other parameters
     parser.add_argument("--seed", type=int, default=42, help="Random seed")

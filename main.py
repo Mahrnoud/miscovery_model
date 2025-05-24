@@ -21,6 +21,8 @@ from model_architecture import Transformer
 from enhanced_training_code import train_model
 from evaluation import ModelEvaluator, evaluate_translations, load_best_model
 
+from custom_lr_scheduler import create_custom_scheduler
+
 # Import dataset preprocessing
 from dataset_preprocessing import prepare_high_quality_training_dataset, get_tensor_datasets
 
@@ -50,6 +52,23 @@ def set_seed(seed):
         torch.cuda.manual_seed_all(seed)
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
+
+
+def initialize_scheduler_main(optimizer, args, total_steps):
+    """
+    Initialize learning rate scheduler for main training
+    """
+    print(f"Initializing {args.lr_scheduler_type} scheduler with:")
+    print(f"  - Total steps: {total_steps}")
+    print(f"  - Warmup steps: {args.warmup_steps}")
+    print(f"  - Initial LR: {args.learning_rate}")
+
+    if hasattr(args, 'min_lr_ratio'):
+        print(f"  - Min LR ratio: {args.min_lr_ratio}")
+    if hasattr(args, 'decay_start_step'):
+        print(f"  - Decay start step: {args.decay_start_step}")
+
+    return create_custom_scheduler(optimizer, args, total_steps)
 
 
 def count_parameters(model):
@@ -148,12 +167,7 @@ def main(args):
     total_steps = len(train_dataloader) * args.num_epochs // args.gradient_accumulation_steps
 
     # Initialize learning rate scheduler
-    scheduler = get_cosine_schedule_with_warmup(
-        optimizer,
-        num_warmup_steps=args.warmup_steps,
-        num_training_steps=total_steps,
-        # min_lr_ratio=0.1  # Minimum learning rate will be 10% of max
-    )
+    scheduler = initialize_scheduler_main(optimizer, args, total_steps)
 
     # Create directory structure
     logger.info("Setting up directories")
@@ -232,6 +246,24 @@ if __name__ == "__main__":
     # Dataset parameters
     parser.add_argument("--samples_per_lang", type=int, default=1000, help="Number of samples per language")
     parser.add_argument("--test_split", type=float, default=0.02, help="Test set split ratio")
+
+    # Learning rate scheduler parameters
+    parser.add_argument("--lr_scheduler_type", type=str, default="cosine",
+                        choices=["constant", "linear_decay_to_min", "cosine_decay_to_min",
+                                 "step_decay_to_min", "cosine", "linear"],
+                        help="Learning rate scheduler type")
+
+    parser.add_argument("--min_lr_ratio", type=float, default=0.1,
+                        help="Minimum learning rate as ratio of initial LR (for decay schedulers)")
+
+    parser.add_argument("--decay_start_step", type=int, default=0,
+                        help="Step to start LR decay (0 = start immediately after warmup)")
+
+    parser.add_argument("--lr_decay_factor", type=float, default=0.5,
+                        help="Factor to multiply LR by in step decay scheduler")
+
+    parser.add_argument("--lr_step_size", type=int, default=1000,
+                        help="Number of steps between LR decreases in step scheduler")
 
     # Other parameters
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
