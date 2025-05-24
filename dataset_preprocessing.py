@@ -70,7 +70,7 @@ def load_and_process_csv_directory(csv_directory):
 
             # Add language tags to prompts
             df['prompt'] = df.apply(
-                lambda row: f"{language_tags.get(row['language'], '[LANG_UNKNOWN]')} {row['prompt']}",
+                lambda row: f"[REORDER] {language_tags.get(row['language'], '[LANG_UNKNOWN]')} {row['prompt']}",
                 axis=1
             )
 

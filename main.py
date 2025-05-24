@@ -223,41 +223,41 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train enhanced Transformer model")
 
     # Model architecture parameters
-    parser.add_argument("--d_model", type=int, default=768, help="Model dimension")
-    parser.add_argument("--num_heads", type=int, default=12, help="Number of attention heads")
-    parser.add_argument("--d_ff", type=int, default=3072, help="Feed-forward dimension (4x d_model)")
-    parser.add_argument("--num_encoder_layers", type=int, default=12, help="Number of encoder layers")
-    parser.add_argument("--num_decoder_layers", type=int, default=12, help="Number of decoder layers")
+    parser.add_argument("--d_model", type=int, default=512, help="Model dimension")
+    parser.add_argument("--num_heads", type=int, default=8, help="Number of attention heads")
+    parser.add_argument("--d_ff", type=int, default=2048, help="Feed-forward dimension (4x d_model)")
+    parser.add_argument("--num_encoder_layers", type=int, default=8, help="Number of encoder layers")
+    parser.add_argument("--num_decoder_layers", type=int, default=8, help="Number of decoder layers")
     parser.add_argument("--max_seq_length", type=int, default=256, help="Maximum sequence length")
-    parser.add_argument("--dropout", type=float, default=0.05, help="Dropout rate")
+    parser.add_argument("--dropout", type=float, default=0.1, help="Dropout rate")
 
     # Training parameters
-    parser.add_argument("--batch_size", type=int, default=2, help="Batch size")
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=2, help="Gradient accumulation steps")
+    parser.add_argument("--batch_size", type=int, default=8, help="Batch size")
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=4, help="Gradient accumulation steps")
     parser.add_argument("--learning_rate", type=float, default=1e-4, help="Learning rate")
     parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay")
     parser.add_argument("--warmup_steps", type=int, default=100, help="Warmup steps")
-    parser.add_argument("--num_epochs", type=int, default=5, help="Number of epochs")
+    parser.add_argument("--num_epochs", type=int, default=20, help="Number of epochs")
     parser.add_argument("--label_smoothing", type=float, default=0.1, help="Label smoothing value")
     parser.add_argument("--max_grad_norm", type=float, default=1.0, help="Maximum gradient norm")
     parser.add_argument("--ema_decay", type=float, default=0.9999, help="EMA decay rate (0 to disable)")
     parser.add_argument("--num_workers", type=int, default=2, help="Number of dataloader workers")
 
     # Evaluation parameters
-    parser.add_argument("--eval_steps", type=int, default=2000, help="Evaluate every N steps")
+    parser.add_argument("--eval_steps", type=int, default=200, help="Evaluate every N steps")
     parser.add_argument("--save_steps", type=int, default=100000, help="Save checkpoint every N steps")
     parser.add_argument("--max_checkpoints", type=int, default=2, help="Maximum number of checkpoints to keep")
 
     # Dataset parameters - UPDATED
-    parser.add_argument("--train_data_dir", type=str, default="/content/datasets/train",
+    parser.add_argument("--train_data_dir", type=str, default="datasets/train",
                         help="Directory containing training CSV files")
-    parser.add_argument("--test_data_dir", type=str, default="/content/datasets/test",
+    parser.add_argument("--test_data_dir", type=str, default="datasets/test",
                         help="Directory containing test CSV files (optional)")
     parser.add_argument("--test_split", type=float, default=0.02,
                         help="Test set split ratio (only used if test_data_dir is None)")
 
     # Learning rate scheduler parameters
-    parser.add_argument("--lr_scheduler_type", type=str, default="cosine",
+    parser.add_argument("--lr_scheduler_type", type=str, default="constant",
                         choices=["constant", "linear_decay_to_min", "cosine_decay_to_min",
                                  "step_decay_to_min", "cosine", "linear"],
                         help="Learning rate scheduler type")

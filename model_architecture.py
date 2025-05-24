@@ -361,16 +361,16 @@ class CustomTransformerConfig(PretrainedConfig):
     def __init__(
             self,
             vocab_size=100000,
-            d_model=768,
-            num_heads=12,
-            d_ff=3072,
-            num_encoder_layers=12,
-            num_decoder_layers=12,
+            d_model=512,
+            num_heads=8,
+            d_ff=2048,
+            num_encoder_layers=8,
+            num_decoder_layers=8,
             max_position_embeddings=2048,
             dropout=0.1,
             pad_token_id=0,
-            bos_token_id=1,
-            eos_token_id=2,
+            bos_token_id=2,
+            eos_token_id=3,
             use_flash_attn=True,
             **kwargs
     ):
