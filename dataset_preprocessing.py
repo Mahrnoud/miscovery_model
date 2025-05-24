@@ -1,3 +1,6 @@
+"""
+Enhanced dataset preprocessing with separate train/test directories
+"""
 import os
 import logging
 import pandas as pd
@@ -39,9 +42,9 @@ def load_and_process_csv_directory(csv_directory):
         logger.warning(f"No CSV files found in directory: {csv_directory}")
         return Dataset.from_dict({"prompt": [], "response": []})
 
-    logger.info(f"Found {len(csv_files)} CSV files to process")
+    logger.info(f"Found {len(csv_files)} CSV files to process in {csv_directory}")
 
-    for csv_file in tqdm(csv_files, desc="Processing CSV files"):
+    for csv_file in tqdm(csv_files, desc=f"Processing CSV files from {os.path.basename(csv_directory)}"):
         logger.info(f"Processing file: {os.path.basename(csv_file)}")
 
         try:
@@ -91,7 +94,7 @@ def load_and_process_csv_directory(csv_directory):
             continue
 
     if not all_data:
-        logger.warning("No valid data found in any CSV files")
+        logger.warning(f"No valid data found in any CSV files from {csv_directory}")
         return Dataset.from_dict({"prompt": [], "response": []})
 
     # Merge all dataframes
@@ -102,7 +105,7 @@ def load_and_process_csv_directory(csv_directory):
 
     # Log final statistics
     logger.info("\n" + "=" * 50)
-    logger.info("PROCESSING SUMMARY")
+    logger.info(f"PROCESSING SUMMARY for {os.path.basename(csv_directory)}")
     logger.info("=" * 50)
 
     for filename, stats in file_stats.items():
@@ -118,7 +121,7 @@ def load_and_process_csv_directory(csv_directory):
 
     # Print summary to console as well
     print("\n" + "=" * 50)
-    print("PROCESSING SUMMARY")
+    print(f"PROCESSING SUMMARY for {os.path.basename(csv_directory)}")
     print("=" * 50)
 
     for filename, stats in file_stats.items():
@@ -133,6 +136,105 @@ def load_and_process_csv_directory(csv_directory):
     print("=" * 50)
 
     return dataset
+
+
+def prepare_high_quality_training_dataset(train_csv_directory, test_csv_directory=None, test_split_ratio=0.05):
+    """
+    Load CSV files from directories and prepare training datasets.
+
+    Args:
+        train_csv_directory: Path to directory containing training CSV files
+        test_csv_directory: Optional path to directory containing test CSV files. 
+                          If None, will split from training data using test_split_ratio
+        test_split_ratio: Ratio of data to use for testing when test_csv_directory is None (default: 0.05)
+
+    Returns:
+        Dictionary with train and test datasets
+    """
+    # Load and process training CSV files
+    logger.info("Loading training dataset...")
+    train_dataset = load_and_process_csv_directory(train_csv_directory)
+
+    if len(train_dataset) == 0:
+        logger.warning("No training data loaded from CSV files")
+        return {"train": train_dataset, "test": Dataset.from_dict({"prompt": [], "response": []})}
+
+    # Handle test dataset
+    if test_csv_directory is not None:
+        # Load test data from separate directory
+        logger.info("Loading test dataset from separate directory...")
+        test_dataset = load_and_process_csv_directory(test_csv_directory)
+
+        if len(test_dataset) == 0:
+            logger.warning("No test data loaded from CSV files, falling back to splitting training data")
+            # Fall back to splitting training data
+            split_datasets = train_dataset.train_test_split(test_size=test_split_ratio, seed=42)
+            train_dataset = split_datasets['train']
+            test_dataset = split_datasets['test']
+        else:
+            logger.info(f"Successfully loaded {len(test_dataset)} test examples from {test_csv_directory}")
+            # Use all training data since we have separate test data
+            # No need to split train_dataset
+    else:
+        # Split training data into train and test
+        logger.info(f"Splitting training data with test ratio: {test_split_ratio}")
+        split_datasets = train_dataset.train_test_split(test_size=test_split_ratio, seed=42)
+        train_dataset = split_datasets['train']
+        test_dataset = split_datasets['test']
+
+    # Final datasets
+    raw_datasets = {
+        "train": train_dataset,
+        "test": test_dataset
+    }
+
+    # Log final dataset statistics
+    logger.info("\n" + "=" * 60)
+    logger.info("FINAL DATASET STATISTICS")
+    logger.info("=" * 60)
+    logger.info(f"Training examples: {len(raw_datasets['train'])}")
+    logger.info(f"Testing examples: {len(raw_datasets['test'])}")
+
+    if test_csv_directory is not None:
+        logger.info(f"Test data source: Separate directory ({test_csv_directory})")
+    else:
+        logger.info(f"Test data source: Split from training data ({test_split_ratio * 100:.1f}%)")
+
+    print(f"\nTraining examples: {len(raw_datasets['train'])}")
+    print(f"Testing examples: {len(raw_datasets['test'])}")
+
+    # Sample some prompt/response pairs for inspection
+    if len(raw_datasets['train']) > 0:
+        samples = raw_datasets['train'].shuffle(seed=42).select(range(min(5, len(raw_datasets['train']))))
+        logger.info("\n=== Sample Training Prompt/Response Pairs ===")
+        print("\n=== Sample Training Prompt/Response Pairs ===")
+        for i, sample in enumerate(samples):
+            logger.info(f"\nPair {i + 1}:")
+            logger.info(f"Prompt: {sample['prompt']}")
+            logger.info(f"Response: {sample['response']}")
+            logger.info("-" * 40)
+            print(f"Pair {i + 1}:")
+            print(f"Prompt: {sample['prompt']}")
+            print(f"Response: {sample['response']}")
+            print("-" * 40)
+
+    # Also show test samples if available
+    if len(raw_datasets['test']) > 0:
+        test_samples = raw_datasets['test'].shuffle(seed=42).select(range(min(3, len(raw_datasets['test']))))
+        logger.info("\n=== Sample Test Prompt/Response Pairs ===")
+        print("\n=== Sample Test Prompt/Response Pairs ===")
+        for i, sample in enumerate(test_samples):
+            logger.info(f"\nTest Pair {i + 1}:")
+            logger.info(f"Prompt: {sample['prompt']}")
+            logger.info(f"Response: {sample['response']}")
+            logger.info("-" * 40)
+            print(f"Test Pair {i + 1}:")
+            print(f"Prompt: {sample['prompt']}")
+            print(f"Response: {sample['response']}")
+            print("-" * 40)
+
+    logger.info("=" * 60)
+    return raw_datasets
 
 
 def create_tensor_datasets(prompts, responses, tokenizer, max_length=256, cache_file=None):
@@ -188,58 +290,6 @@ def create_tensor_datasets(prompts, responses, tokenizer, max_length=256, cache_
             logger.info("Continuing without caching")
 
     return dataset
-
-
-def prepare_high_quality_training_dataset(csv_directory, test_split_ratio=0.05):
-    """
-    Load CSV files from directory and prepare training datasets.
-
-    Args:
-        csv_directory: Path to directory containing CSV files
-        test_split_ratio: Ratio of data to use for testing (default: 0.05)
-
-    Returns:
-        Dictionary with train and test datasets
-    """
-    # Load and process all CSV files
-    merged_dataset = load_and_process_csv_directory(csv_directory)
-
-    if len(merged_dataset) == 0:
-        logger.warning("No data loaded from CSV files")
-        return {"train": merged_dataset, "test": merged_dataset}
-
-    # Split into train and test
-    split_datasets = merged_dataset.train_test_split(test_size=test_split_ratio, seed=42)
-    train_dataset = split_datasets['train']
-    test_dataset = split_datasets['test']
-
-    # Final datasets
-    raw_datasets = {
-        "train": train_dataset,
-        "test": test_dataset
-    }
-
-    # Log final dataset statistics
-    logger.info("Final dataset statistics:")
-    logger.info(f"Training examples: {len(raw_datasets['train'])}")
-    logger.info(f"Testing examples: {len(raw_datasets['test'])}")
-
-    # Sample some prompt/response pairs for inspection
-    if len(raw_datasets['train']) > 0:
-        samples = raw_datasets['train'].shuffle(seed=42).select(range(min(5, len(raw_datasets['train']))))
-        logger.info("\n=== Sample Training Prompt/Response Pairs ===")
-        print("\n=== Sample Training Prompt/Response Pairs ===")
-        for i, sample in enumerate(samples):
-            logger.info(f"\nPair {i + 1}:")
-            logger.info(f"Prompt: {sample['prompt']}")
-            logger.info(f"Response: {sample['response']}")
-            logger.info("-" * 40)
-            print(f"Pair {i + 1}:")
-            print(f"Prompt: {sample['prompt']}")
-            print(f"Response: {sample['response']}")
-            print("-" * 40)
-
-    return raw_datasets
 
 
 def get_tensor_datasets(raw_datasets, tokenizer, args):

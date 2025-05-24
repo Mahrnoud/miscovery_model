@@ -1,6 +1,7 @@
 """
 Enhanced Transformer-based Model for Text Summarization and Translation
 Main training script with improved architecture, training process, and evaluation
+Updated to support separate test directories
 """
 import os
 import random
@@ -14,7 +15,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from transformers import AutoTokenizer, get_cosine_schedule_with_warmup
+from transformers import AutoTokenizer
 
 # Import our model and training utilities
 from model_architecture import Transformer
@@ -96,7 +97,11 @@ def main(args):
 
     # Load and process datasets using the separate dataset preprocessing module
     logger.info("Preparing datasets")
-    raw_datasets = prepare_high_quality_training_dataset("/content/datasets")
+    raw_datasets = prepare_high_quality_training_dataset(
+        train_csv_directory=args.train_data_dir,
+        test_csv_directory=args.test_data_dir,  # New parameter
+        test_split_ratio=args.test_split  # Only used if test_csv_directory is None
+    )
 
     # Convert to tensor datasets
     logger.info("Converting to tensor datasets")
@@ -189,19 +194,19 @@ def main(args):
         weight_decay=args.weight_decay,
         max_grad_norm=args.max_grad_norm,
         ema_decay=args.ema_decay,
-        eval_dataloader=test_dataloader,  # Added evaluation dataloader
-        tokenizer=tokenizer,  # Added tokenizer for evaluation
-        eval_steps=args.eval_steps,  # Evaluate every N steps
-        save_steps=args.save_steps,  # Save checkpoint every N steps
-        output_dir=saving_directory,  # Output directory
-        max_checkpoints=args.max_checkpoints  # Maximum number of checkpoints to keep
+        eval_dataloader=test_dataloader,  # This now uses the entire test dataset
+        tokenizer=tokenizer,
+        eval_steps=args.eval_steps,
+        save_steps=args.save_steps,
+        output_dir=saving_directory,
+        max_checkpoints=args.max_checkpoints
     )
 
     # Load best model for final evaluation
     model = load_best_model(model, saving_directory, device)
 
-    # Final evaluation on test set
-    logger.info("Starting final evaluation on test set")
+    # Final evaluation on test set (entire test dataset)
+    logger.info("Starting final evaluation on entire test set")
     evaluator = ModelEvaluator(model, tokenizer, test_dataloader, device, saving_directory)
     final_metrics = evaluator.evaluate(args.num_epochs, total_steps)
 
@@ -238,14 +243,18 @@ if __name__ == "__main__":
     parser.add_argument("--ema_decay", type=float, default=0.9999, help="EMA decay rate (0 to disable)")
     parser.add_argument("--num_workers", type=int, default=2, help="Number of dataloader workers")
 
-    # Evaluation parameters (new)
+    # Evaluation parameters
     parser.add_argument("--eval_steps", type=int, default=2000, help="Evaluate every N steps")
     parser.add_argument("--save_steps", type=int, default=100000, help="Save checkpoint every N steps")
     parser.add_argument("--max_checkpoints", type=int, default=2, help="Maximum number of checkpoints to keep")
 
-    # Dataset parameters
-    parser.add_argument("--samples_per_lang", type=int, default=1000, help="Number of samples per language")
-    parser.add_argument("--test_split", type=float, default=0.02, help="Test set split ratio")
+    # Dataset parameters - UPDATED
+    parser.add_argument("--train_data_dir", type=str, default="/content/datasets/train",
+                        help="Directory containing training CSV files")
+    parser.add_argument("--test_data_dir", type=str, default="/content/datasets/test",
+                        help="Directory containing test CSV files (optional)")
+    parser.add_argument("--test_split", type=float, default=0.02,
+                        help="Test set split ratio (only used if test_data_dir is None)")
 
     # Learning rate scheduler parameters
     parser.add_argument("--lr_scheduler_type", type=str, default="cosine",

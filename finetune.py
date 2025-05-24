@@ -1,5 +1,6 @@
 """
 Fine-tuning script for pre-trained Transformer models
+Updated to support separate test directories
 """
 import torch
 import torch.nn as nn
@@ -7,10 +8,6 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from transformers import (
     AutoTokenizer,
-    get_cosine_schedule_with_warmup,
-    get_linear_schedule_with_warmup,
-    get_constant_schedule_with_warmup,
-    get_polynomial_decay_schedule_with_warmup
 )
 import random
 import sys
@@ -156,7 +153,11 @@ def main(args):
 
     # Load and process datasets using the separate dataset preprocessing module
     logger.info("Preparing datasets for fine-tuning")
-    raw_datasets = prepare_high_quality_training_dataset("/content/datasets")
+    raw_datasets = prepare_high_quality_training_dataset(
+        train_csv_directory=args.train_data_dir,
+        test_csv_directory=args.test_data_dir,  # New parameter
+        test_split_ratio=args.test_split  # Only used if test_csv_directory is None
+    )
 
     # Convert to tensor datasets
     logger.info("Converting to tensor datasets")
@@ -226,19 +227,19 @@ def main(args):
         weight_decay=args.weight_decay,
         max_grad_norm=args.max_grad_norm,
         ema_decay=args.ema_decay,
-        eval_dataloader=test_dataloader,  # Added evaluation dataloader
-        tokenizer=tokenizer,  # Added tokenizer for evaluation
-        eval_steps=args.eval_steps,  # Evaluate every N steps
-        save_steps=args.save_steps,  # Save checkpoint every N steps
-        output_dir=args.output_dir,  # Output directory
-        max_checkpoints=args.max_checkpoints  # Maximum number of checkpoints to keep
+        eval_dataloader=test_dataloader,  # This now uses the entire test dataset
+        tokenizer=tokenizer,
+        eval_steps=args.eval_steps,
+        save_steps=args.save_steps,
+        output_dir=args.output_dir,
+        max_checkpoints=args.max_checkpoints
     )
 
     # Load best model for final evaluation
     model = load_best_model(model, args.output_dir, device)
 
-    # Final evaluation on test set
-    logger.info("Starting final evaluation on test set")
+    # Final evaluation on test set (entire test dataset)
+    logger.info("Starting final evaluation on entire test set")
     evaluator = ModelEvaluator(model, tokenizer, test_dataloader, device, args.output_dir)
     final_metrics = evaluator.evaluate(args.num_epochs, total_steps)
 
@@ -304,6 +305,14 @@ if __name__ == "__main__":
     parser.add_argument("--lr_step_size", type=int, default=1000,
                         help="Number of steps between LR decreases in step scheduler")
 
+    # Dataset parameters - UPDATED
+    parser.add_argument("--train_data_dir", type=str, default="/content/datasets/train",
+                        help="Directory containing training CSV files")
+    parser.add_argument("--test_data_dir", type=str, default="/content/datasets/test",
+                        help="Directory containing test CSV files (optional)")
+    parser.add_argument("--test_split", type=float, default=0.02,
+                        help="Test set split ratio (only used if test_data_dir is None)")
+
     # Other parameters
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--tokenizer_name", type=str, default="miscovery/tokenizer_v2", help="Tokenizer name or path")
@@ -314,7 +323,6 @@ if __name__ == "__main__":
                         help="Output directory")
     parser.add_argument("--cache_dir", type=str, default="stage_02/cache",
                         help="Cache directory")
-    parser.add_argument("--test_split", type=float, default=0.02, help="Test set split ratio")
 
     args, unknown = parser.parse_known_args()
 
