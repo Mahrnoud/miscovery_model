@@ -151,7 +151,7 @@ def main(args):
     model.to(device)
 
     # Count model parameters
-    count_parameters(model)
+    print(count_parameters(model))
 
     # Initialize loss function with label smoothing
     criterion = nn.CrossEntropyLoss(
@@ -249,9 +249,9 @@ if __name__ == "__main__":
     parser.add_argument("--max_checkpoints", type=int, default=2, help="Maximum number of checkpoints to keep")
 
     # Dataset parameters - UPDATED
-    parser.add_argument("--train_data_dir", type=str, default="datasets/train",
+    parser.add_argument("--train_data_dir", type=str, default="/content/datasets/train",
                         help="Directory containing training CSV files")
-    parser.add_argument("--test_data_dir", type=str, default="datasets/test",
+    parser.add_argument("--test_data_dir", type=str, default="/content/datasets/test",
                         help="Directory containing test CSV files (optional)")
     parser.add_argument("--test_split", type=float, default=0.02,
                         help="Test set split ratio (only used if test_data_dir is None)")
