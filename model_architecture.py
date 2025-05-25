@@ -361,9 +361,9 @@ class CustomTransformerConfig(PretrainedConfig):
     def __init__(
             self,
             vocab_size=100000,
-            d_model=256,
+            d_model=512,
             num_heads=8,
-            d_ff=1024,
+            d_ff=2048,
             num_encoder_layers=6,
             num_decoder_layers=6,
             max_position_embeddings=1024,
