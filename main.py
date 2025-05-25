@@ -75,10 +75,13 @@ def initialize_scheduler_main(optimizer, args, total_steps):
 def count_parameters(model):
     total = sum(p.numel() for p in model.parameters() if p.requires_grad)
     if total >= 1_000_000_000:
+        print(f"Model Parameters: {total / 1_000_000_000:.2f}B")
         logger.info(f"Model Parameters: {total / 1_000_000_000:.2f}B")
     elif total >= 1_000_000:
+        print(f"Model Parameters: {total / 1_000_000:.2f}M")
         logger.info(f"Model Parameters: {total / 1_000_000:.2f}M")
     else:
+        print(f"Model Parameters: {total:,}")
         logger.info(f"Model Parameters: {total:,}")
 
     return total
