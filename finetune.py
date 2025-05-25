@@ -262,11 +262,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Fine-tune pre-trained model on downstream tasks")
 
     # Model parameters
-    parser.add_argument("--d_model", type=int, default=512, help="Model dimension")
+    parser.add_argument("--d_model", type=int, default=256, help="Model dimension")
     parser.add_argument("--num_heads", type=int, default=8, help="Number of attention heads")
-    parser.add_argument("--d_ff", type=int, default=2048, help="Feed-forward dimension")
-    parser.add_argument("--num_encoder_layers", type=int, default=8, help="Number of encoder layers")
-    parser.add_argument("--num_decoder_layers", type=int, default=8, help="Number of decoder layers")
+    parser.add_argument("--d_ff", type=int, default=1024, help="Feed-forward dimension")
+    parser.add_argument("--num_encoder_layers", type=int, default=6, help="Number of encoder layers")
+    parser.add_argument("--num_decoder_layers", type=int, default=6, help="Number of decoder layers")
     parser.add_argument("--max_seq_length", type=int, default=256, help="Maximum sequence length")
     parser.add_argument("--dropout", type=float, default=0.1, help="Dropout rate")
 
@@ -283,7 +283,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_workers", type=int, default=2, help="Number of dataloader workers")
 
     # Evaluation parameters
-    parser.add_argument("--eval_steps", type=int, default=200, help="Evaluate every N steps")
+    parser.add_argument("--eval_steps", type=int, default=2000, help="Evaluate every N steps")
     parser.add_argument("--save_steps", type=int, default=100000, help="Save checkpoint every N steps")
     parser.add_argument("--max_checkpoints", type=int, default=2, help="Maximum number of checkpoints to keep")
 
