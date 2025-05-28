@@ -248,7 +248,7 @@ if __name__ == "__main__":
 
     # Evaluation parameters
     parser.add_argument("--eval_steps", type=int, default=2000000, help="Evaluate every N steps")
-    parser.add_argument("--save_steps", type=int, default=100000, help="Save checkpoint every N steps")
+    parser.add_argument("--save_steps", type=int, default=1000000, help="Save checkpoint every N steps")
     parser.add_argument("--max_checkpoints", type=int, default=2, help="Maximum number of checkpoints to keep")
 
     # Dataset parameters - UPDATED
@@ -280,9 +280,9 @@ if __name__ == "__main__":
     # Other parameters
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--tokenizer_name", type=str, default="miscovery/tokenizer_v2", help="Tokenizer name or path")
-    parser.add_argument("--output_dir", type=str, default="/content/drive/MyDrive/256_v1/stage_01/output",
+    parser.add_argument("--output_dir", type=str, default="/content/drive/MyDrive/256_v1_2/stage_01/output",
                         help="Output directory")
-    parser.add_argument("--cache_dir", type=str, default="/content/drive/MyDrive/256_v1/stage_01/cache",
+    parser.add_argument("--cache_dir", type=str, default="/content/drive/MyDrive/256_v1_2/stage_01/cache",
                         help="Cache directory")
 
     args, unknown = parser.parse_known_args()
