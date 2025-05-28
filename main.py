@@ -235,8 +235,8 @@ if __name__ == "__main__":
     parser.add_argument("--dropout", type=float, default=0.1, help="Dropout rate")
 
     # Training parameters
-    parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=64, help="Gradient accumulation steps")
+    parser.add_argument("--batch_size", type=int, default=16, help="Batch size")
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=16, help="Gradient accumulation steps")
     parser.add_argument("--learning_rate", type=float, default=1e-4, help="Learning rate")
     parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay")
     parser.add_argument("--warmup_steps", type=int, default=1, help="Warmup steps")
@@ -247,7 +247,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_workers", type=int, default=2, help="Number of dataloader workers")
 
     # Evaluation parameters
-    parser.add_argument("--eval_steps", type=int, default=2000000, help="Evaluate every N steps")
+    parser.add_argument("--eval_steps", type=int, default=1000, help="Evaluate every N steps")
     parser.add_argument("--save_steps", type=int, default=1000000, help="Save checkpoint every N steps")
     parser.add_argument("--max_checkpoints", type=int, default=2, help="Maximum number of checkpoints to keep")
 
