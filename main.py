@@ -226,16 +226,16 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train enhanced Transformer model")
 
     # Model architecture parameters
-    parser.add_argument("--d_model", type=int, default=256, help="Model dimension")
+    parser.add_argument("--d_model", type=int, default=128, help="Model dimension")
     parser.add_argument("--num_heads", type=int, default=8, help="Number of attention heads")
-    parser.add_argument("--d_ff", type=int, default=1024, help="Feed-forward dimension (4x d_model)")
+    parser.add_argument("--d_ff", type=int, default=512, help="Feed-forward dimension (4x d_model)")
     parser.add_argument("--num_encoder_layers", type=int, default=6, help="Number of encoder layers")
     parser.add_argument("--num_decoder_layers", type=int, default=6, help="Number of decoder layers")
     parser.add_argument("--max_seq_length", type=int, default=256, help="Maximum sequence length")
     parser.add_argument("--dropout", type=float, default=0.1, help="Dropout rate")
 
     # Training parameters
-    parser.add_argument("--batch_size", type=int, default=16, help="Batch size")
+    parser.add_argument("--batch_size", type=int, default=10, help="Batch size")
     parser.add_argument("--gradient_accumulation_steps", type=int, default=16, help="Gradient accumulation steps")
     parser.add_argument("--learning_rate", type=float, default=1e-4, help="Learning rate")
     parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay")
@@ -251,7 +251,7 @@ if __name__ == "__main__":
     parser.add_argument("--save_steps", type=int, default=1000000, help="Save checkpoint every N steps")
     parser.add_argument("--max_checkpoints", type=int, default=2, help="Maximum number of checkpoints to keep")
 
-    # Dataset parameters - UPDATED
+    # Dataset parameters
     parser.add_argument("--train_data_dir", type=str, default="/content/drive/MyDrive/1_Dataset_May_2025/Train",
                         help="Directory containing training CSV files")
     parser.add_argument("--test_data_dir", type=str, default="/content/drive/MyDrive/1_Dataset_May_2025/Test",
