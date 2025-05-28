@@ -235,8 +235,8 @@ if __name__ == "__main__":
     parser.add_argument("--dropout", type=float, default=0.1, help="Dropout rate")
 
     # Training parameters
-    parser.add_argument("--batch_size", type=int, default=12, help="Batch size")
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=32, help="Gradient accumulation steps")
+    parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=64, help="Gradient accumulation steps")
     parser.add_argument("--learning_rate", type=float, default=1e-4, help="Learning rate")
     parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay")
     parser.add_argument("--warmup_steps", type=int, default=1, help="Warmup steps")
@@ -247,14 +247,14 @@ if __name__ == "__main__":
     parser.add_argument("--num_workers", type=int, default=2, help="Number of dataloader workers")
 
     # Evaluation parameters
-    parser.add_argument("--eval_steps", type=int, default=2000, help="Evaluate every N steps")
+    parser.add_argument("--eval_steps", type=int, default=2000000, help="Evaluate every N steps")
     parser.add_argument("--save_steps", type=int, default=100000, help="Save checkpoint every N steps")
     parser.add_argument("--max_checkpoints", type=int, default=2, help="Maximum number of checkpoints to keep")
 
     # Dataset parameters - UPDATED
-    parser.add_argument("--train_data_dir", type=str, default="/content/datasets/train",
+    parser.add_argument("--train_data_dir", type=str, default="/content/drive/MyDrive/1_Dataset_May_2025/train",
                         help="Directory containing training CSV files")
-    parser.add_argument("--test_data_dir", type=str, default="/content/datasets/test",
+    parser.add_argument("--test_data_dir", type=str, default="/content/drive/MyDrive/1_Dataset_May_2025/test",
                         help="Directory containing test CSV files (optional)")
     parser.add_argument("--test_split", type=float, default=0.02,
                         help="Test set split ratio (only used if test_data_dir is None)")
@@ -280,9 +280,9 @@ if __name__ == "__main__":
     # Other parameters
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--tokenizer_name", type=str, default="miscovery/tokenizer_v2", help="Tokenizer name or path")
-    parser.add_argument("--output_dir", type=str, default="/content/drive/MyDrive/512/stage_01/output",
+    parser.add_argument("--output_dir", type=str, default="/content/drive/MyDrive/256_v1/stage_01/output",
                         help="Output directory")
-    parser.add_argument("--cache_dir", type=str, default="/content/drive/MyDrive/512/stage_01/cache",
+    parser.add_argument("--cache_dir", type=str, default="/content/drive/MyDrive/256_v1/stage_01/cache",
                         help="Cache directory")
 
     args, unknown = parser.parse_known_args()
