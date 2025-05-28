@@ -227,16 +227,16 @@ if __name__ == "__main__":
 
     # Model architecture parameters
     parser.add_argument("--d_model", type=int, default=128, help="Model dimension")
-    parser.add_argument("--num_heads", type=int, default=8, help="Number of attention heads")
+    parser.add_argument("--num_heads", type=int, default=4, help="Number of attention heads")
     parser.add_argument("--d_ff", type=int, default=512, help="Feed-forward dimension (4x d_model)")
-    parser.add_argument("--num_encoder_layers", type=int, default=6, help="Number of encoder layers")
-    parser.add_argument("--num_decoder_layers", type=int, default=6, help="Number of decoder layers")
+    parser.add_argument("--num_encoder_layers", type=int, default=4, help="Number of encoder layers")
+    parser.add_argument("--num_decoder_layers", type=int, default=4, help="Number of decoder layers")
     parser.add_argument("--max_seq_length", type=int, default=256, help="Maximum sequence length")
     parser.add_argument("--dropout", type=float, default=0.1, help="Dropout rate")
 
     # Training parameters
-    parser.add_argument("--batch_size", type=int, default=10, help="Batch size")
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=16, help="Gradient accumulation steps")
+    parser.add_argument("--batch_size", type=int, default=8, help="Batch size")
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=8, help="Gradient accumulation steps")
     parser.add_argument("--learning_rate", type=float, default=1e-4, help="Learning rate")
     parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay")
     parser.add_argument("--warmup_steps", type=int, default=1, help="Warmup steps")
