@@ -252,9 +252,9 @@ if __name__ == "__main__":
     parser.add_argument("--max_checkpoints", type=int, default=2, help="Maximum number of checkpoints to keep")
 
     # Dataset parameters - UPDATED
-    parser.add_argument("--train_data_dir", type=str, default="/content/drive/MyDrive/1_Dataset_May_2025/train",
+    parser.add_argument("--train_data_dir", type=str, default="/content/drive/MyDrive/1_Dataset_May_2025/Train",
                         help="Directory containing training CSV files")
-    parser.add_argument("--test_data_dir", type=str, default="/content/drive/MyDrive/1_Dataset_May_2025/test",
+    parser.add_argument("--test_data_dir", type=str, default="/content/drive/MyDrive/1_Dataset_May_2025/Test",
                         help="Directory containing test CSV files (optional)")
     parser.add_argument("--test_split", type=float, default=0.02,
                         help="Test set split ratio (only used if test_data_dir is None)")
