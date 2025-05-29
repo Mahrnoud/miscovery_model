@@ -1,5 +1,6 @@
 """
 Enhanced training module with evaluation metrics and checkpoint management
+FIXED VERSION with proper EMA state management
 """
 import math
 import time
@@ -37,7 +38,7 @@ def get_cosine_schedule_with_warmup(optimizer, num_warmup_steps, num_training_st
 
 class EMA:
     """
-    Exponential Moving Average for model parameters
+    Exponential Moving Average for model parameters - FIXED VERSION
     """
 
     def __init__(self, model, decay=0.9999):
@@ -45,6 +46,7 @@ class EMA:
         self.decay = decay
         self.shadow = {}
         self.backup = {}
+        self.is_shadow_applied = False  # Add state tracking
 
         # Register model parameters
         for name, param in model.named_parameters():
@@ -52,6 +54,10 @@ class EMA:
                 self.shadow[name] = param.data.clone()
 
     def update(self):
+        if self.is_shadow_applied:
+            print("WARNING: Trying to update EMA while shadow weights are applied!")
+            return
+
         for name, param in self.model.named_parameters():
             if param.requires_grad:
                 assert name in self.shadow
@@ -59,18 +65,43 @@ class EMA:
                 self.shadow[name] = new_average.clone()
 
     def apply_shadow(self):
+        if self.is_shadow_applied:
+            print("WARNING: Shadow weights already applied!")
+            return
+
         for name, param in self.model.named_parameters():
             if param.requires_grad:
                 assert name in self.shadow
-                self.backup[name] = param.data
-                param.data = self.shadow[name]
+                self.backup[name] = param.data.clone()  # Make a copy
+                param.data = self.shadow[name].clone()  # Apply shadow
+
+        self.is_shadow_applied = True
+        print(f"EMA shadow weights applied successfully")
 
     def restore(self):
+        if not self.is_shadow_applied:
+            print("WARNING: Trying to restore when shadow weights not applied!")
+            return
+
         for name, param in self.model.named_parameters():
             if param.requires_grad:
-                assert name in self.backup
-                param.data = self.backup[name]
+                if name in self.backup:
+                    param.data = self.backup[name].clone()
+                else:
+                    print(f"WARNING: No backup found for parameter {name}")
+
         self.backup = {}
+        self.is_shadow_applied = False
+        print(f"Original weights restored successfully")
+
+    def get_state_info(self):
+        """Debug function to check EMA state"""
+        return {
+            "is_shadow_applied": self.is_shadow_applied,
+            "has_backup": len(self.backup) > 0,
+            "shadow_params_count": len(self.shadow),
+            "backup_params_count": len(self.backup)
+        }
 
 
 def train_model(model, train_dataloader, criterion, optimizer, scheduler,
@@ -88,6 +119,7 @@ def train_model(model, train_dataloader, criterion, optimizer, scheduler,
                 ):
     """
     Enhanced training function with evaluation metrics and checkpoint management
+    FIXED VERSION with proper EMA state management
     """
     # Import the evaluator class here to avoid circular imports
     from evaluation import ModelEvaluator
@@ -138,6 +170,46 @@ def train_model(model, train_dataloader, criterion, optimizer, scheduler,
     learning_rates = []
     eval_metrics = []
 
+    # Helper function for safe EMA evaluation
+    def safe_ema_evaluation(ema, evaluator, epoch, step, avg_train_loss):
+        """Safely apply EMA weights for evaluation and restore afterward"""
+        evaluation_successful = False
+        metrics = None
+
+        try:
+            # Ensure model is in eval mode before applying EMA
+            model.eval()
+            print(f"\n=== Starting evaluation at epoch {epoch}, step {step} ===")
+
+            # Apply EMA weights if enabled
+            if ema is not None:
+                print(f"EMA state before applying: {ema.get_state_info()}")
+                ema.apply_shadow()
+                print(f"EMA state after applying: {ema.get_state_info()}")
+
+            # Run evaluation
+            metrics = evaluator.evaluate(epoch, step, train_loss=avg_train_loss)
+            evaluation_successful = True
+            print(f"Evaluation completed successfully at step {step}")
+
+        except Exception as e:
+            print(f"ERROR during evaluation at step {step}: {e}")
+            import traceback
+            traceback.print_exc()
+
+        finally:
+            # Always restore original weights, even if evaluation failed
+            if ema is not None:
+                print(f"EMA state before restoring: {ema.get_state_info()}")
+                ema.restore()
+                print(f"EMA state after restoring: {ema.get_state_info()}")
+
+            # Reset model to training mode
+            model.train()
+            print(f"=== Evaluation session completed at step {step} ===\n")
+
+        return metrics if evaluation_successful else None
+
     for epoch in range(start_epoch, epochs):
         total_loss = 0
         optimizer.zero_grad()
@@ -184,10 +256,6 @@ def train_model(model, train_dataloader, criterion, optimizer, scheduler,
                 scaler.update()
                 scheduler.step()
 
-                # if global_step % 10 == 0:
-                    # current_lr = scheduler.get_last_lr()[0]
-                    # print(f"\nStep {global_step} - Current learning rate: {current_lr:.8f}")
-
                 # Update EMA if enabled
                 if ema is not None:
                     ema.update()
@@ -203,25 +271,19 @@ def train_model(model, train_dataloader, criterion, optimizer, scheduler,
                 if global_step % 100 == 0:
                     print(f"\nStep {global_step} - Current learning rate: {current_lr:.7f}")
 
-                # Run evaluation at specified intervals
-                if evaluator and global_step % eval_steps == 0:
-                    # Apply EMA before evaluation if enabled
-                    if ema is not None:
-                        ema.apply_shadow()
+                # Calculate steps to epoch end for evaluation timing
+                steps_to_epoch_end = len(train_dataloader) - (batch_idx + 1)
+                eval_buffer = 50  # Don't evaluate too close to epoch end
 
+                # Run evaluation at specified intervals (but not too close to epoch end)
+                if evaluator and global_step % eval_steps == 0 and steps_to_epoch_end > eval_buffer:
                     # Get average training loss
                     avg_train_loss = sum(train_losses[-100:]) / min(100, len(train_losses[-100:]))
 
                     # Run evaluation
-                    metrics = evaluator.evaluate(epoch + 1, global_step, train_loss=avg_train_loss)
-                    eval_metrics.append(metrics)
-
-                    # Restore model if EMA was applied
-                    if ema is not None:
-                        ema.restore()
-
-                    # Reset model to training mode
-                    model.train()
+                    metrics = safe_ema_evaluation(ema, evaluator, epoch + 1, global_step, avg_train_loss)
+                    if metrics:
+                        eval_metrics.append(metrics)
 
             total_loss += loss.item() * gradient_accumulation_steps
 
@@ -236,25 +298,22 @@ def train_model(model, train_dataloader, criterion, optimizer, scheduler,
         avg_loss = total_loss / len(train_dataloader)
         print(f"\nEpoch {epoch + 1}/{epochs} completed in {epoch_time:.2f}s. Average Train Loss: {avg_loss:.4f}")
 
-        # Run evaluation at the end of each epoch if not already done
-        if evaluator and (global_step % eval_steps != 0):
-            # Apply EMA before evaluation if enabled
-            if ema is not None:
-                ema.apply_shadow()
+        # Run evaluation at the end of each epoch if we haven't evaluated recently
+        if evaluator:
+            # Check if we need to evaluate at epoch end
+            steps_since_last_eval = global_step % eval_steps
+            if steps_since_last_eval != 0:  # Only if we didn't just evaluate
+                print(f"Running epoch-end evaluation (last eval was {steps_since_last_eval} steps ago)")
 
-            # Get average training loss for the epoch
-            avg_train_loss = avg_loss
+                # Get average training loss for the epoch
+                avg_train_loss = avg_loss
 
-            # Run evaluation
-            metrics = evaluator.evaluate(epoch + 1, global_step, train_loss=avg_train_loss)
-            eval_metrics.append(metrics)
-
-            # Restore model if EMA was applied
-            if ema is not None:
-                ema.restore()
-
-            # Reset model to training mode
-            model.train()
+                # Run evaluation
+                metrics = safe_ema_evaluation(ema, evaluator, epoch + 1, global_step, avg_train_loss)
+                if metrics:
+                    eval_metrics.append(metrics)
+            else:
+                print(f"Skipping epoch-end evaluation (just evaluated at step {global_step})")
 
     # Plot combined training history at the end
     if train_losses and evaluator:
