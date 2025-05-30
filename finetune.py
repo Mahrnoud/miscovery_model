@@ -317,11 +317,11 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--tokenizer_name", type=str, default="miscovery/tokenizer_v2", help="Tokenizer name or path")
     parser.add_argument("--checkpoint_path", type=str,
-                        default="/content/drive/MyDrive/256_v1/stage_01/output/checkpoints/checkpoint_epoch5_step72000.pth",
+                        default="/content/drive/MyDrive/256_v2/stage_01/output/checkpoints/checkpoint_epoch6_step80000.pth",
                         help="Path to pre-trained checkpoint from Stage 1")
-    parser.add_argument("--output_dir", type=str, default="/content/drive/MyDrive/256_v1/stage_01_2/output",
+    parser.add_argument("--output_dir", type=str, default="/content/drive/MyDrive/256_v2/stage_01_2/output",
                         help="Output directory")
-    parser.add_argument("--cache_dir", type=str, default="/content/drive/MyDrive/256_v1/stage_01_2/cache",
+    parser.add_argument("--cache_dir", type=str, default="/content/drive/MyDrive/256_v2/stage_01_2/cache",
                         help="Cache directory")
 
     args, unknown = parser.parse_known_args()
