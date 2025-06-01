@@ -1,8 +1,11 @@
 .idea
 venv
+checkpoints
+training
 .DS_Store
 stage_01
 stage_02
 training.log
+finetuning.log
 arithmatic.csv
 arithmatic_questions.csv

@@ -273,14 +273,14 @@ if __name__ == "__main__":
     # Training parameters
     parser.add_argument("--batch_size", type=int, default=8, help="Batch size")
     parser.add_argument("--gradient_accumulation_steps", type=int, default=4, help="Gradient accumulation steps")
-    parser.add_argument("--learning_rate", type=float, default=5e-5, help="Learning rate for fine-tuning")
+    parser.add_argument("--learning_rate", type=float, default=1e-4, help="Learning rate for fine-tuning")
     parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay")
     parser.add_argument("--warmup_steps", type=int, default=1, help="Warmup steps")
     parser.add_argument("--num_epochs", type=int, default=20, help="Number of epochs")
     parser.add_argument("--label_smoothing", type=float, default=0.1, help="Label smoothing value")
     parser.add_argument("--max_grad_norm", type=float, default=1.0, help="Maximum gradient norm")
     parser.add_argument("--ema_decay", type=float, default=0.9999, help="EMA decay rate (0 to disable)")
-    parser.add_argument("--num_workers", type=int, default=2, help="Number of dataloader workers")
+    parser.add_argument("--num_workers", type=int, default=4, help="Number of dataloader workers")
 
     # Evaluation parameters
     parser.add_argument("--eval_steps", type=int, default=5000, help="Evaluate every N steps")
@@ -317,11 +317,11 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--tokenizer_name", type=str, default="miscovery/tokenizer_v2", help="Tokenizer name or path")
     parser.add_argument("--checkpoint_path", type=str,
-                        default="/content/drive/MyDrive/256_v2/stage_01/output/checkpoints/checkpoint_epoch6_step80000.pth",
+                        default="/content/checkpoint.pth",
                         help="Path to pre-trained checkpoint from Stage 1")
-    parser.add_argument("--output_dir", type=str, default="/content/drive/MyDrive/256_v2/stage_01_2/output",
+    parser.add_argument("--output_dir", type=str, default="/content/drive/MyDrive/256_v2/stage_01_3/output",
                         help="Output directory")
-    parser.add_argument("--cache_dir", type=str, default="/content/drive/MyDrive/256_v2/stage_01_2/cache",
+    parser.add_argument("--cache_dir", type=str, default="/content/drive/MyDrive/256_v2/stage_01_3/cache",
                         help="Cache directory")
 
     args, unknown = parser.parse_known_args()
