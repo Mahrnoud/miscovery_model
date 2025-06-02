@@ -1,334 +1,401 @@
 """
-Enhanced dataset preprocessing with separate train/test directories
+Memory-efficient dataset preprocessing with streaming and chunked processing
 """
 import os
 import logging
 import pandas as pd
 import torch
-from torch.utils.data import TensorDataset
+from torch.utils.data import Dataset
 from tqdm import tqdm
-from datasets import Dataset
 import glob
+import gc
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
 
-def load_and_process_csv_directory(csv_directory):
+class StreamingCSVDataset(Dataset):
     """
-    Load all CSV files from a directory, clean the data, and add language tags.
-
-    Args:
-        csv_directory: Path to directory containing CSV files
-
-    Returns:
-        Combined dataset with language tags added to prompts
+    Memory-efficient streaming dataset that processes CSV files on-demand
     """
-    # Language tag mapping
-    language_tags = {
-        'en': '[LANG_EN]',
-        'ar': '[LANG_AR]',
-        'eg': '[LANG_AR_EG]'
-    }
+    def __init__(self, csv_files, tokenizer, max_length=256, language_tags=None):
+        self.csv_files = csv_files
+        self.tokenizer = tokenizer
+        self.max_length = max_length
+        self.language_tags = language_tags or {
+            'en': '[LANG_EN]',
+            'ar': '[LANG_AR]',
+            'eg': '[LANG_AR_EG]'
+        }
 
-    all_data = []
-    total_removed_rows = 0
-    file_stats = {}
+        # Build index of all samples across files
+        self._build_index()
 
-    # Find all CSV files in the directory
-    csv_files = glob.glob(os.path.join(csv_directory, "*.csv"))
+    def _build_index(self):
+        """Build an index of sample locations without loading all data"""
+        self.file_indices = []
+        self.total_samples = 0
 
-    if not csv_files:
-        logger.warning(f"No CSV files found in directory: {csv_directory}")
-        return Dataset.from_dict({"prompt": [], "response": []})
+        logger.info("Building dataset index...")
+        for csv_file in tqdm(self.csv_files, desc="Indexing files"):
+            try:
+                # Just count rows without loading full data
+                df_info = pd.read_csv(csv_file, nrows=0)  # Just get columns
+                if not all(col in df_info.columns for col in ['prompt', 'response', 'language']):
+                    logger.warning(f"Skipping {csv_file}: Missing required columns")
+                    continue
 
-    logger.info(f"Found {len(csv_files)} CSV files to process in {csv_directory}")
+                # Count valid rows (this is still memory efficient)
+                chunk_size = 1000
+                valid_rows = 0
+                for chunk in pd.read_csv(csv_file, chunksize=chunk_size):
+                    # Remove invalid rows
+                    chunk = chunk.dropna(subset=['prompt', 'response'])
+                    chunk = chunk[chunk['prompt'].str.strip() != '']
+                    chunk = chunk[chunk['response'].str.strip() != '']
+                    valid_rows += len(chunk)
 
-    for csv_file in tqdm(csv_files, desc=f"Processing CSV files from {os.path.basename(csv_directory)}"):
-        logger.info(f"Processing file: {os.path.basename(csv_file)}")
+                self.file_indices.append({
+                    'file': csv_file,
+                    'start_idx': self.total_samples,
+                    'count': valid_rows
+                })
+                self.total_samples += valid_rows
 
-        try:
-            # Load CSV file
-            df = pd.read_csv(csv_file)
-            original_rows = len(df)
-
-            # Check if required columns exist
-            required_columns = ['prompt', 'response', 'language']
-            missing_columns = [col for col in required_columns if col not in df.columns]
-            if missing_columns:
-                logger.warning(f"Skipping {csv_file}: Missing columns {missing_columns}")
+            except Exception as e:
+                logger.error(f"Error indexing {csv_file}: {str(e)}")
                 continue
 
-            # Remove rows where prompt or response is empty/null
-            initial_count = len(df)
-            df = df.dropna(subset=['prompt', 'response'])
-            df = df[df['prompt'].str.strip() != '']
-            df = df[df['response'].str.strip() != '']
+        logger.info(f"Total samples indexed: {self.total_samples}")
 
-            removed_count = initial_count - len(df)
-            total_removed_rows += removed_count
+    def __len__(self):
+        return self.total_samples
 
-            # Add language tags to prompts
-            df['prompt'] = df.apply(
-                lambda row: f"[REORDER] {language_tags.get(row['language'], '[LANG_UNKNOWN]')} {row['prompt']}",
-                axis=1
-            )
+    def __getitem__(self, idx):
+        """Get a single sample by index"""
+        # Find which file contains this index
+        file_info = None
+        for info in self.file_indices:
+            if info['start_idx'] <= idx < info['start_idx'] + info['count']:
+                file_info = info
+                break
 
-            # Keep only prompt and response columns
-            processed_df = df[['prompt', 'response']].copy()
-            all_data.append(processed_df)
+        if file_info is None:
+            raise IndexError(f"Index {idx} out of range")
 
-            # Store statistics for this file
-            file_stats[os.path.basename(csv_file)] = {
-                'original_rows': original_rows,
-                'removed_rows': removed_count,
-                'final_rows': len(processed_df)
-            }
+        # Calculate position within the file
+        file_idx = idx - file_info['start_idx']
 
-            logger.info(f"  Original rows: {original_rows}")
-            logger.info(f"  Removed rows: {removed_count}")
-            logger.info(f"  Final rows: {len(processed_df)}")
+        # Load and process the specific row
+        chunk_size = 1000
+        current_valid_idx = 0
 
-        except Exception as e:
-            logger.error(f"Error processing {csv_file}: {str(e)}")
-            continue
+        for chunk in pd.read_csv(file_info['file'], chunksize=chunk_size):
+            # Clean chunk
+            chunk = chunk.dropna(subset=['prompt', 'response'])
+            chunk = chunk[chunk['prompt'].str.strip() != '']
+            chunk = chunk[chunk['response'].str.strip() != '']
 
-    if not all_data:
-        logger.warning(f"No valid data found in any CSV files from {csv_directory}")
-        return Dataset.from_dict({"prompt": [], "response": []})
+            if current_valid_idx + len(chunk) > file_idx:
+                # The target row is in this chunk
+                row_in_chunk = file_idx - current_valid_idx
+                row = chunk.iloc[row_in_chunk]
 
-    # Merge all dataframes
-    merged_df = pd.concat(all_data, ignore_index=True)
+                # Process the row
+                prompt = f"[REORDER] {self.language_tags.get(row['language'], '[LANG_UNKNOWN]')} {row['prompt']}"
+                response = row['response']
 
-    # Convert to HuggingFace Dataset
-    dataset = Dataset.from_pandas(merged_df)
+                # Tokenize
+                input_encoding = self.tokenizer(
+                    prompt,
+                    max_length=self.max_length,
+                    padding='max_length',
+                    truncation=True,
+                    return_tensors="pt",
+                    add_special_tokens=True
+                )
+                target_encoding = self.tokenizer(
+                    response,
+                    max_length=self.max_length,
+                    padding='max_length',
+                    truncation=True,
+                    return_tensors="pt",
+                    add_special_tokens=True
+                )
 
-    # Log final statistics
-    logger.info("\n" + "=" * 50)
-    logger.info(f"PROCESSING SUMMARY for {os.path.basename(csv_directory)}")
-    logger.info("=" * 50)
+                return (
+                    input_encoding["input_ids"].squeeze(0),
+                    target_encoding["input_ids"].squeeze(0)
+                )
 
-    for filename, stats in file_stats.items():
-        logger.info(f"{filename}:")
-        logger.info(f"  Original rows: {stats['original_rows']}")
-        logger.info(f"  Removed rows: {stats['removed_rows']}")
-        logger.info(f"  Final rows: {stats['final_rows']}")
-        logger.info("-" * 30)
+            current_valid_idx += len(chunk)
 
-    logger.info(f"Total removed rows across all files: {total_removed_rows}")
-    logger.info(f"Final merged dataset size: {len(dataset)}")
-    logger.info("=" * 50)
-
-    # Print summary to console as well
-    print("\n" + "=" * 50)
-    print(f"PROCESSING SUMMARY for {os.path.basename(csv_directory)}")
-    print("=" * 50)
-
-    for filename, stats in file_stats.items():
-        print(f"{filename}:")
-        print(f"  Original rows: {stats['original_rows']}")
-        print(f"  Removed rows: {stats['removed_rows']}")
-        print(f"  Final rows: {stats['final_rows']}")
-        print("-" * 30)
-
-    print(f"Total removed rows across all files: {total_removed_rows}")
-    print(f"Final merged dataset size: {len(dataset)}")
-    print("=" * 50)
-
-    return dataset
+        raise IndexError(f"Could not find index {idx} in file {file_info['file']}")
 
 
-def prepare_high_quality_training_dataset(train_csv_directory, test_csv_directory=None, test_split_ratio=0.05):
+class ChunkedDatasetProcessor:
     """
-    Load CSV files from directories and prepare training datasets.
+    Process large datasets in chunks to avoid memory issues
+    """
+    def __init__(self, chunk_size=1000, cache_dir="./cache"):
+        self.chunk_size = chunk_size
+        self.cache_dir = cache_dir
+        os.makedirs(cache_dir, exist_ok=True)
+
+    def process_csv_files_chunked(self, csv_files, tokenizer, max_length=256):
+        """
+        Process CSV files in chunks and save intermediate results
+        """
+        language_tags = {
+            'en': '[LANG_EN]',
+            'ar': '[LANG_AR]',
+            'eg': '[LANG_AR_EG]'
+        }
+
+        chunk_files = []
+        total_samples = 0
+
+        for csv_file in tqdm(csv_files, desc="Processing CSV files"):
+            logger.info(f"Processing {os.path.basename(csv_file)} in chunks")
+
+            try:
+                chunk_count = 0
+                for chunk in pd.read_csv(csv_file, chunksize=self.chunk_size):
+                    # Clean chunk
+                    original_size = len(chunk)
+                    chunk = chunk.dropna(subset=['prompt', 'response'])
+                    chunk = chunk[chunk['prompt'].str.strip() != '']
+                    chunk = chunk[chunk['response'].str.strip() != '']
+
+                    if len(chunk) == 0:
+                        continue
+
+                    # Add language tags
+                    chunk['prompt'] = chunk.apply(
+                        lambda row: f"[REORDER] {language_tags.get(row['language'], '[LANG_UNKNOWN]')} {row['prompt']}",
+                        axis=1
+                    )
+
+                    # Process chunk into tensors
+                    input_tensors = []
+                    target_tensors = []
+
+                    for _, row in chunk.iterrows():
+                        input_encoding = tokenizer(
+                            row['prompt'],
+                            max_length=max_length,
+                            padding='max_length',
+                            truncation=True,
+                            return_tensors="pt",
+                            add_special_tokens=True
+                        )
+                        target_encoding = tokenizer(
+                            row['response'],
+                            max_length=max_length,
+                            padding='max_length',
+                            truncation=True,
+                            return_tensors="pt",
+                            add_special_tokens=True
+                        )
+                        input_tensors.append(input_encoding["input_ids"].squeeze(0))
+                        target_tensors.append(target_encoding["input_ids"].squeeze(0))
+
+                    if input_tensors:
+                        # Save chunk
+                        chunk_file = os.path.join(
+                            self.cache_dir,
+                            f"chunk_{os.path.basename(csv_file)}_{chunk_count}.pt"
+                        )
+                        torch.save({
+                            'input_ids': torch.stack(input_tensors),
+                            'target_ids': torch.stack(target_tensors)
+                        }, chunk_file)
+
+                        chunk_files.append(chunk_file)
+                        total_samples += len(input_tensors)
+                        chunk_count += 1
+
+                    # Clear memory
+                    del chunk, input_tensors, target_tensors
+                    gc.collect()
+
+            except Exception as e:
+                logger.error(f"Error processing {csv_file}: {str(e)}")
+                continue
+
+        logger.info(f"Processed {total_samples} samples into {len(chunk_files)} chunks")
+        return chunk_files, total_samples
+
+
+class ChunkedTensorDataset(Dataset):
+    """
+    Dataset that loads tensor chunks on demand
+    """
+    def __init__(self, chunk_files):
+        self.chunk_files = chunk_files
+        self.chunk_info = []
+        self.total_samples = 0
+
+        # Build index of chunks
+        for chunk_file in chunk_files:
+            try:
+                data = torch.load(chunk_file, map_location='cpu')
+                chunk_size = len(data['input_ids'])
+                self.chunk_info.append({
+                    'file': chunk_file,
+                    'start_idx': self.total_samples,
+                    'size': chunk_size
+                })
+                self.total_samples += chunk_size
+            except Exception as e:
+                logger.error(f"Error loading chunk {chunk_file}: {e}")
+                continue
+
+    def __len__(self):
+        return self.total_samples
+
+    def __getitem__(self, idx):
+        # Find which chunk contains this index
+        chunk_info = None
+        for info in self.chunk_info:
+            if info['start_idx'] <= idx < info['start_idx'] + info['size']:
+                chunk_info = info
+                break
+
+        if chunk_info is None:
+            raise IndexError(f"Index {idx} out of range")
+
+        # Load chunk and get specific item
+        data = torch.load(chunk_info['file'], map_location='cpu')
+        chunk_idx = idx - chunk_info['start_idx']
+
+        return (
+            data['input_ids'][chunk_idx],
+            data['target_ids'][chunk_idx]
+        )
+
+
+def prepare_memory_efficient_dataset(train_csv_directory, test_csv_directory=None,
+                                   tokenizer=None, max_length=256, processing_method="streaming"):
+    """
+    Prepare datasets using memory-efficient methods
 
     Args:
-        train_csv_directory: Path to directory containing training CSV files
-        test_csv_directory: Optional path to directory containing test CSV files. 
-                          If None, will split from training data using test_split_ratio
-        test_split_ratio: Ratio of data to use for testing when test_csv_directory is None (default: 0.05)
+        train_csv_directory: Directory with training CSV files
+        test_csv_directory: Directory with test CSV files (optional)
+        tokenizer: Tokenizer for text processing
+        max_length: Maximum sequence length
+        processing_method: "streaming" or "chunked"
 
     Returns:
         Dictionary with train and test datasets
     """
-    # Load and process training CSV files
-    logger.info("Loading training dataset...")
-    train_dataset = load_and_process_csv_directory(train_csv_directory)
 
-    if len(train_dataset) == 0:
-        logger.warning("No training data loaded from CSV files")
-        return {"train": train_dataset, "test": Dataset.from_dict({"prompt": [], "response": []})}
+    # Find CSV files
+    train_csv_files = glob.glob(os.path.join(train_csv_directory, "*.csv"))
+    test_csv_files = []
+    if test_csv_directory:
+        test_csv_files = glob.glob(os.path.join(test_csv_directory, "*.csv"))
 
-    # Handle test dataset
-    if test_csv_directory is not None:
-        # Load test data from separate directory
-        logger.info("Loading test dataset from separate directory...")
-        test_dataset = load_and_process_csv_directory(test_csv_directory)
+    if not train_csv_files:
+        logger.error(f"No CSV files found in {train_csv_directory}")
+        return None
 
-        if len(test_dataset) == 0:
-            logger.warning("No test data loaded from CSV files, falling back to splitting training data")
-            # Fall back to splitting training data
-            split_datasets = train_dataset.train_test_split(test_size=test_split_ratio, seed=42)
-            train_dataset = split_datasets['train']
-            test_dataset = split_datasets['test']
+    logger.info(f"Found {len(train_csv_files)} training files")
+    if test_csv_files:
+        logger.info(f"Found {len(test_csv_files)} test files")
+
+    if processing_method == "streaming":
+        # Use streaming dataset (most memory efficient)
+        train_dataset = StreamingCSVDataset(train_csv_files, tokenizer, max_length)
+
+        if test_csv_files:
+            test_dataset = StreamingCSVDataset(test_csv_files, tokenizer, max_length)
         else:
-            logger.info(f"Successfully loaded {len(test_dataset)} test examples from {test_csv_directory}")
-            # Use all training data since we have separate test data
-            # No need to split train_dataset
-    else:
-        # Split training data into train and test
-        logger.info(f"Splitting training data with test ratio: {test_split_ratio}")
-        split_datasets = train_dataset.train_test_split(test_size=test_split_ratio, seed=42)
-        train_dataset = split_datasets['train']
-        test_dataset = split_datasets['test']
+            # Split streaming dataset (more complex, simplified here)
+            total_size = len(train_dataset)
+            test_size = int(0.05 * total_size)
+            train_size = total_size - test_size
 
-    # Final datasets
-    raw_datasets = {
+            # Create indices for split
+            indices = torch.randperm(total_size)
+            train_indices = indices[:train_size]
+            test_indices = indices[train_size:]
+
+            # Note: This creates a subset, you might want to implement a proper split
+            train_dataset = torch.utils.data.Subset(train_dataset, train_indices)
+            test_dataset = torch.utils.data.Subset(train_dataset, test_indices)
+
+    elif processing_method == "chunked":
+        # Use chunked processing
+        processor = ChunkedDatasetProcessor()
+
+        # Process training files
+        train_chunks, train_samples = processor.process_csv_files_chunked(
+            train_csv_files, tokenizer, max_length
+        )
+        train_dataset = ChunkedTensorDataset(train_chunks)
+
+        if test_csv_files:
+            # Process test files
+            test_chunks, test_samples = processor.process_csv_files_chunked(
+                test_csv_files, tokenizer, max_length
+            )
+            test_dataset = ChunkedTensorDataset(test_chunks)
+        else:
+            # Split training data (simplified)
+            # You would implement proper splitting logic here
+            test_size = int(0.05 * len(train_dataset))
+            train_size = len(train_dataset) - test_size
+            train_dataset, test_dataset = torch.utils.data.random_split(
+                train_dataset, [train_size, test_size]
+            )
+
+    return {
         "train": train_dataset,
         "test": test_dataset
     }
 
-    # Log final dataset statistics
-    logger.info("\n" + "=" * 60)
-    logger.info("FINAL DATASET STATISTICS")
-    logger.info("=" * 60)
-    logger.info(f"Training examples: {len(raw_datasets['train'])}")
-    logger.info(f"Testing examples: {len(raw_datasets['test'])}")
 
-    if test_csv_directory is not None:
-        logger.info(f"Test data source: Separate directory ({test_csv_directory})")
-    else:
-        logger.info(f"Test data source: Split from training data ({test_split_ratio * 100:.1f}%)")
-
-    print(f"\nTraining examples: {len(raw_datasets['train'])}")
-    print(f"Testing examples: {len(raw_datasets['test'])}")
-
-    # Sample some prompt/response pairs for inspection
-    if len(raw_datasets['train']) > 0:
-        samples = raw_datasets['train'].shuffle(seed=42).select(range(min(5, len(raw_datasets['train']))))
-        logger.info("\n=== Sample Training Prompt/Response Pairs ===")
-        print("\n=== Sample Training Prompt/Response Pairs ===")
-        for i, sample in enumerate(samples):
-            logger.info(f"\nPair {i + 1}:")
-            logger.info(f"Prompt: {sample['prompt']}")
-            logger.info(f"Response: {sample['response']}")
-            logger.info("-" * 40)
-            print(f"Pair {i + 1}:")
-            print(f"Prompt: {sample['prompt']}")
-            print(f"Response: {sample['response']}")
-            print("-" * 40)
-
-    # Also show test samples if available
-    if len(raw_datasets['test']) > 0:
-        test_samples = raw_datasets['test'].shuffle(seed=42).select(range(min(3, len(raw_datasets['test']))))
-        logger.info("\n=== Sample Test Prompt/Response Pairs ===")
-        print("\n=== Sample Test Prompt/Response Pairs ===")
-        for i, sample in enumerate(test_samples):
-            logger.info(f"\nTest Pair {i + 1}:")
-            logger.info(f"Prompt: {sample['prompt']}")
-            logger.info(f"Response: {sample['response']}")
-            logger.info("-" * 40)
-            print(f"Test Pair {i + 1}:")
-            print(f"Prompt: {sample['prompt']}")
-            print(f"Response: {sample['response']}")
-            print("-" * 40)
-
-    logger.info("=" * 60)
-    return raw_datasets
+# Additional memory optimization functions
+def clear_memory():
+    """Clear Python and CUDA memory"""
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
 
-def create_tensor_datasets(prompts, responses, tokenizer, max_length=256, cache_file=None):
+def get_memory_usage():
+    """Get current memory usage"""
+    import psutil
+    process = psutil.Process(os.getpid())
+    memory_mb = process.memory_info().rss / 1024 / 1024
+    return f"Memory usage: {memory_mb:.2f} MB"
+
+
+# Example usage function
+def main_memory_efficient(train_dir, test_dir=None, tokenizer=None):
     """
-    Convert prompts and responses to tensor datasets for model training.
-    If cache_file is provided, will attempt to load from or save to cache.
+    Main function demonstrating memory-efficient processing
     """
-    # First check if we should load from cache
-    if cache_file and os.path.exists(cache_file):
-        logger.info(f"Loading preprocessed tensors from {cache_file}")
-        try:
-            return torch.load(cache_file)
-        except Exception as e:
-            logger.warning(f"Error loading cache file: {e}")
-            logger.info("Falling back to processing data from scratch")
+    logger.info("Starting memory-efficient dataset preparation")
+    logger.info(get_memory_usage())
 
-    logger.info("Processing data into tensors...")
-    input_tensors = []
-    target_tensors = []
-
-    for p, r in tqdm(zip(prompts, responses), total=len(prompts), desc="Creating tensors"):
-        input_encoding = tokenizer(
-            p,
-            max_length=max_length,
-            padding='max_length',
-            truncation=True,
-            return_tensors="pt",
-            add_special_tokens=True
-        )
-        target_encoding = tokenizer(
-            r,
-            max_length=max_length,
-            padding='max_length',
-            truncation=True,
-            return_tensors="pt",
-            add_special_tokens=True
-        )
-        input_tensors.append(input_encoding["input_ids"].squeeze(0))
-        target_tensors.append(target_encoding["input_ids"].squeeze(0))
-
-    input_tensors = torch.stack(input_tensors)
-    target_tensors = torch.stack(target_tensors)
-
-    dataset = TensorDataset(input_tensors, target_tensors)
-
-    if cache_file:
-        logger.info(f"Saving preprocessed tensors to {cache_file}")
-        os.makedirs(os.path.dirname(cache_file), exist_ok=True)
-        try:
-            torch.save(dataset, cache_file)
-        except Exception as e:
-            logger.warning(f"Failed to save cache file: {e}")
-            logger.info("Continuing without caching")
-
-    return dataset
-
-
-def get_tensor_datasets(raw_datasets, tokenizer, args):
-    """
-    Convert raw datasets to tensor datasets ready for model training.
-
-    Args:
-        raw_datasets: Dictionary containing 'train' and 'test' datasets
-        tokenizer: Tokenizer to use for encoding
-        args: Arguments containing preprocessing parameters
-
-    Returns:
-        Dictionary with train and test tensor datasets
-    """
-    cache_dir = args.cache_dir
-    train_cache_file = f"{cache_dir}/train_tensors_{args.max_seq_length}.pt"
-    test_cache_file = f"{cache_dir}/test_tensors_{args.max_seq_length}.pt"
-
-    os.makedirs(cache_dir, exist_ok=True)
-
-    train_dataset = create_tensor_datasets(
-        raw_datasets['train']['prompt'],
-        raw_datasets['train']['response'],
-        tokenizer,
-        max_length=args.max_seq_length,
-        cache_file=train_cache_file
+    # Use streaming for maximum memory efficiency
+    datasets = prepare_memory_efficient_dataset(
+        train_csv_directory=train_dir,
+        test_csv_directory=test_dir,
+        tokenizer=tokenizer,
+        max_length=256,
+        processing_method="streaming"  # or "chunked"
     )
 
-    test_dataset = create_tensor_datasets(
-        raw_datasets['test']['prompt'],
-        raw_datasets['test']['response'],
-        tokenizer,
-        max_length=args.max_seq_length,
-        cache_file=test_cache_file
-    )
+    logger.info(f"Training dataset size: {len(datasets['train'])}")
+    logger.info(f"Test dataset size: {len(datasets['test'])}")
+    logger.info(get_memory_usage())
 
-    tensor_datasets = {
-        "train": train_dataset,
-        "test": test_dataset
-    }
+    # Clear memory after processing
+    clear_memory()
+    logger.info(f"After cleanup: {get_memory_usage()}")
 
-    return tensor_datasets
+    return datasets
