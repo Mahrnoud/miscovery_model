@@ -257,7 +257,7 @@ def main():
 
     # Model checkpoint
     parser.add_argument("--checkpoint_path", type=str,
-                        default="/Users/mahmoud/Documents/PythonProjects/model_evaluation/data/checkpoint_epoch1_step2.pth",
+                        default="/Users/mahmoud/Documents/PythonProjects/miscovery_model/checkpoints/3/checkpoint_epoch2_step20000.pth",
                         help="Path to model checkpoint")
     parser.add_argument("--output_dir", type=str,
                         default="/Users/mahmoud/Documents/PythonProjects/model_evaluation/data",

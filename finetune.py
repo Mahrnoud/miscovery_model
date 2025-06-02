@@ -280,7 +280,7 @@ if __name__ == "__main__":
     parser.add_argument("--label_smoothing", type=float, default=0.1, help="Label smoothing value")
     parser.add_argument("--max_grad_norm", type=float, default=1.0, help="Maximum gradient norm")
     parser.add_argument("--ema_decay", type=float, default=0.9999, help="EMA decay rate (0 to disable)")
-    parser.add_argument("--num_workers", type=int, default=4, help="Number of dataloader workers")
+    parser.add_argument("--num_workers", type=int, default=2, help="Number of dataloader workers")
 
     # Evaluation parameters
     parser.add_argument("--eval_steps", type=int, default=5000, help="Evaluate every N steps")
