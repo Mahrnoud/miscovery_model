@@ -311,9 +311,9 @@ if __name__ == "__main__":
                         help="Number of steps between LR decreases in step scheduler")
 
     # Dataset parameters - UPDATED
-    parser.add_argument("--train_data_dir", type=str, default="/content/drive/MyDrive/1_Dataset_May_2025/Train",
+    parser.add_argument("--train_data_dir", type=str, default="/kaggle/working/1_Dataset_May_2025/Train",
                         help="Directory containing training CSV files")
-    parser.add_argument("--test_data_dir", type=str, default="/content/drive/MyDrive/1_Dataset_May_2025/Test",
+    parser.add_argument("--test_data_dir", type=str, default="/kaggle/working/1_Dataset_May_2025/Test",
                         help="Directory containing test CSV files (optional)")
     parser.add_argument("--test_split", type=float, default=0.02,
                         help="Test set split ratio (only used if test_data_dir is None)")
@@ -324,9 +324,9 @@ if __name__ == "__main__":
     parser.add_argument("--checkpoint_path", type=str,
                         default="/content/checkpoint.pth",
                         help="Path to pre-trained checkpoint from Stage 1")
-    parser.add_argument("--output_dir", type=str, default="/content/drive/MyDrive/256_v2/stage_01_3/output",
+    parser.add_argument("--output_dir", type=str, default="/kaggle/working/256_v2/stage_01_3/output",
                         help="Output directory")
-    parser.add_argument("--cache_dir", type=str, default="/content/drive/MyDrive/256_v2/stage_01_3/cache",
+    parser.add_argument("--cache_dir", type=str, default="/kaggle/working/256_v2/stage_01_3/cache",
                         help="Cache directory")
 
     args, unknown = parser.parse_known_args()
