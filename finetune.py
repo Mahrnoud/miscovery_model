@@ -172,7 +172,7 @@ def main(args):
         tensor_datasets["train"],
         batch_size=args.batch_size,
         shuffle=True,
-        num_workers=2,  # Can use workers now
+        num_workers=args.num_workers,  # Can use workers now
         pin_memory=True,
         prefetch_factor=2  # Prefetch for speed
     )
@@ -181,7 +181,7 @@ def main(args):
         tensor_datasets["test"],
         batch_size=args.batch_size,
         shuffle=False,
-        num_workers=2,
+        num_workers=args.num_workers,
         pin_memory=True,
         prefetch_factor=2
     )
@@ -276,8 +276,8 @@ if __name__ == "__main__":
     parser.add_argument("--dropout", type=float, default=0.1, help="Dropout rate")
 
     # Training parameters
-    parser.add_argument("--batch_size", type=int, default=8, help="Batch size")
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=4, help="Gradient accumulation steps")
+    parser.add_argument("--batch_size", type=int, default=10, help="Batch size")
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=2, help="Gradient accumulation steps")
     parser.add_argument("--learning_rate", type=float, default=1e-4, help="Learning rate for fine-tuning")
     parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay")
     parser.add_argument("--warmup_steps", type=int, default=1, help="Warmup steps")

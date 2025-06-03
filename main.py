@@ -107,8 +107,8 @@ def main(args):
         tokenizer=tokenizer,
         max_seq_length=args.max_seq_length,
         processing_method="balanced",  # NEW: Balanced approach
-        chunk_size=5000,  # NEW: Larger chunks = faster processing
-        cache_chunks=5  # NEW: Keep 5 chunks in memory = faster training
+        chunk_size=10000,  # NEW: Larger chunks = faster processing
+        cache_chunks=10  # NEW: Keep 5 chunks in memory = faster training
     )
 
     # Skip tensor conversion (already done)
@@ -119,7 +119,7 @@ def main(args):
         tensor_datasets["train"],
         batch_size=args.batch_size,
         shuffle=True,
-        num_workers=2,  # Can use workers now
+        num_workers=args.num_workers,  # Can use workers now
         pin_memory=True,
         prefetch_factor=2  # Prefetch for speed
     )
@@ -128,7 +128,7 @@ def main(args):
         tensor_datasets["test"],
         batch_size=args.batch_size,
         shuffle=False,
-        num_workers=2,
+        num_workers=args.num_workers,
         pin_memory=True,
         prefetch_factor=2
     )
