@@ -26,7 +26,7 @@ from enhanced_training_code import train_model
 from evaluation import ModelEvaluator, evaluate_translations, load_best_model
 
 # Import dataset preprocessing
-from dataset_preprocessing import prepare_high_quality_training_dataset, get_tensor_datasets
+from dataset_preprocessing import get_tensor_datasets_memory_efficient, prepare_high_quality_training_dataset_memory_efficient
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -151,25 +151,28 @@ def main(args):
     if args.checkpoint_path:
         model = load_checkpoint(args.checkpoint_path, model, optimizer, device)
 
-    # Load and process datasets using the separate dataset preprocessing module
+    # Load and process datasets using the memory-efficient version
     logger.info("Preparing datasets for fine-tuning")
-    raw_datasets = prepare_high_quality_training_dataset(
+    raw_datasets = prepare_high_quality_training_dataset_memory_efficient(
         train_csv_directory=args.train_data_dir,
-        test_csv_directory=args.test_data_dir,  # New parameter
-        test_split_ratio=args.test_split  # Only used if test_csv_directory is None
+        test_csv_directory=args.test_data_dir,
+        test_split_ratio=args.test_split,
+        tokenizer=tokenizer,  # NEW: Now required as parameter
+        max_seq_length=args.max_seq_length,  # NEW: Pass max length
+        processing_method="streaming"  # NEW: Choose "streaming" or "chunked"
     )
 
-    # Convert to tensor datasets
-    logger.info("Converting to tensor datasets")
-    tensor_datasets = get_tensor_datasets(raw_datasets, tokenizer, args)
+    # Skip tensor conversion (already done)
+    logger.info("Datasets are already tensorized")
+    tensor_datasets = get_tensor_datasets_memory_efficient(raw_datasets, tokenizer, args)
 
-    # Create dataloaders
+    # Create dataloaders (same as before)
     logger.info("Creating dataloaders")
     train_dataloader = DataLoader(
         tensor_datasets["train"],
         batch_size=args.batch_size,
         shuffle=True,
-        num_workers=args.num_workers,
+        num_workers=0,  # IMPORTANT: Set to 0 for streaming datasets
         pin_memory=True
     )
 
@@ -177,7 +180,7 @@ def main(args):
         tensor_datasets["test"],
         batch_size=args.batch_size,
         shuffle=False,
-        num_workers=args.num_workers,
+        num_workers=0,  # IMPORTANT: Set to 0 for streaming datasets
         pin_memory=True
     )
 

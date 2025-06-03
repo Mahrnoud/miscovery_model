@@ -7,7 +7,6 @@ import torch
 import argparse
 import logging
 import os
-import pickle
 from typing import Dict, Any
 
 from utils.greedy_inference import Transformer

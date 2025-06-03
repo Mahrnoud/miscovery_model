@@ -373,6 +373,85 @@ def get_memory_usage():
     return f"Memory usage: {memory_mb:.2f} MB"
 
 
+# Drop-in replacement functions for backward compatibility
+def prepare_high_quality_training_dataset_memory_efficient(train_csv_directory, test_csv_directory=None,
+                                                          test_split_ratio=0.05, tokenizer=None,
+                                                          max_seq_length=256, processing_method="streaming"):
+    """
+    Drop-in replacement for the original function with memory efficiency
+
+    Args:
+        train_csv_directory: Path to directory containing training CSV files
+        test_csv_directory: Optional path to directory containing test CSV files
+        test_split_ratio: Ratio for test split when test_csv_directory is None
+        tokenizer: Tokenizer for processing (required for memory-efficient version)
+        max_seq_length: Maximum sequence length
+        processing_method: "streaming" or "chunked"
+
+    Returns:
+        Dictionary with train and test datasets (already tensorized)
+    """
+    if tokenizer is None:
+        raise ValueError("tokenizer is required for memory-efficient processing")
+
+    logger.info("Preparing memory-efficient datasets for fine-tuning")
+    logger.info(get_memory_usage())
+
+    datasets = prepare_memory_efficient_dataset(
+        train_csv_directory=train_csv_directory,
+        test_csv_directory=test_csv_directory,
+        tokenizer=tokenizer,
+        max_length=max_seq_length,
+        processing_method=processing_method
+    )
+
+    if datasets is None:
+        logger.error("Failed to prepare datasets")
+        return {"train": None, "test": None}
+
+    # Handle test split if no separate test directory
+    if test_csv_directory is None and processing_method == "streaming":
+        # For streaming, we need to implement proper splitting
+        total_size = len(datasets['train'])
+        test_size = int(test_split_ratio * total_size)
+        train_size = total_size - test_size
+
+        # Create random indices for splitting
+        indices = torch.randperm(total_size)
+        train_indices = indices[:train_size]
+        test_indices = indices[train_size:]
+
+        # Create subset datasets
+        datasets['train'] = torch.utils.data.Subset(datasets['train'], train_indices)
+        datasets['test'] = torch.utils.data.Subset(datasets['train'].dataset, test_indices)
+
+    logger.info(f"Training dataset size: {len(datasets['train'])}")
+    logger.info(f"Test dataset size: {len(datasets['test'])}")
+    logger.info(get_memory_usage())
+
+    # Clear memory after processing
+    clear_memory()
+    logger.info(f"After cleanup: {get_memory_usage()}")
+
+    return datasets
+
+
+def get_tensor_datasets_memory_efficient(raw_datasets, tokenizer, args):
+    """
+    Drop-in replacement that returns the datasets as-is since they're already tensorized
+
+    Args:
+        raw_datasets: Already processed tensor datasets
+        tokenizer: Not used (kept for compatibility)
+        args: Not used (kept for compatibility)
+
+    Returns:
+        The input datasets (already tensorized)
+    """
+    logger.info("Datasets are already tensorized - returning as-is")
+    return raw_datasets
+
+
 # Example usage function
 def main_memory_efficient(train_dir, test_dir=None, tokenizer=None):
     """
