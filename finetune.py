@@ -160,8 +160,8 @@ def main(args):
         tokenizer=tokenizer,
         max_seq_length=args.max_seq_length,
         processing_method="balanced",  # NEW: Balanced approach
-        chunk_size=5000,  # NEW: Larger chunks = faster processing
-        cache_chunks=5  # NEW: Keep 5 chunks in memory = faster training
+        chunk_size=10000,  # NEW: Larger chunks = faster processing
+        cache_chunks=10  # NEW: Keep 5 chunks in memory = faster training
     )
 
     # Skip tensor conversion (already done)
