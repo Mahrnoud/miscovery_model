@@ -135,16 +135,16 @@ class StreamingCSVDataset(Dataset):
 
 class ChunkedDatasetProcessor:
     """
-    Process large datasets in chunks to avoid memory issues
+    Basic chunked dataset processor (slower version of FastChunkedDatasetProcessor)
     """
-    def __init__(self, chunk_size=1000, cache_dir="./cache"):
+    def __init__(self, chunk_size=2000, cache_dir="./cache"):
         self.chunk_size = chunk_size
         self.cache_dir = cache_dir
         os.makedirs(cache_dir, exist_ok=True)
 
     def process_csv_files_chunked(self, csv_files, tokenizer, max_length=256):
         """
-        Process CSV files in chunks and save intermediate results
+        Process CSV files in chunks with basic processing
         """
         language_tags = {
             'en': '[LANG_EN]',
@@ -162,7 +162,101 @@ class ChunkedDatasetProcessor:
                 chunk_count = 0
                 for chunk in pd.read_csv(csv_file, chunksize=self.chunk_size):
                     # Clean chunk
-                    original_size = len(chunk)
+                    chunk = chunk.dropna(subset=['prompt', 'response'])
+                    chunk = chunk[chunk['prompt'].str.strip() != '']
+                    chunk = chunk[chunk['response'].str.strip() != '']
+
+                    if len(chunk) == 0:
+                        continue
+
+                    # Process each row (slower than batch processing)
+                    input_ids_list = []
+                    target_ids_list = []
+
+                    for _, row in chunk.iterrows():
+                        prompt = f"[REORDER] {language_tags.get(row['language'], '[LANG_UNKNOWN]')} {row['prompt']}"
+                        response = row['response']
+
+                        # Tokenize individually
+                        input_encoding = tokenizer(
+                            prompt,
+                            max_length=max_length,
+                            padding='max_length',
+                            truncation=True,
+                            return_tensors="pt",
+                            add_special_tokens=True
+                        )
+                        target_encoding = tokenizer(
+                            response,
+                            max_length=max_length,
+                            padding='max_length',
+                            truncation=True,
+                            return_tensors="pt",
+                            add_special_tokens=True
+                        )
+
+                        input_ids_list.append(input_encoding['input_ids'])
+                        target_ids_list.append(target_encoding['input_ids'])
+
+                    # Stack tensors
+                    input_ids = torch.cat(input_ids_list, dim=0)
+                    target_ids = torch.cat(target_ids_list, dim=0)
+
+                    # Save chunk
+                    chunk_file = os.path.join(
+                        self.cache_dir,
+                        f"chunk_{os.path.basename(csv_file)}_{chunk_count}.pt"
+                    )
+                    torch.save({
+                        'input_ids': input_ids,
+                        'target_ids': target_ids
+                    }, chunk_file)
+
+                    chunk_files.append(chunk_file)
+                    total_samples += len(input_ids)
+                    chunk_count += 1
+
+                    # Clear memory
+                    del chunk, input_ids, target_ids, input_ids_list, target_ids_list
+                    gc.collect()
+
+            except Exception as e:
+                logger.error(f"Error processing {csv_file}: {str(e)}")
+                continue
+
+        logger.info(f"Processed {total_samples} samples into {len(chunk_files)} chunks")
+        return chunk_files, total_samples
+
+
+class FastChunkedDatasetProcessor:
+    """
+    Faster version with larger chunks and better processing
+    """
+    def __init__(self, chunk_size=5000, cache_dir="./cache"):  # Increased chunk size
+        self.chunk_size = chunk_size
+        self.cache_dir = cache_dir
+        os.makedirs(cache_dir, exist_ok=True)
+
+    def process_csv_files_chunked_fast(self, csv_files, tokenizer, max_length=256):
+        """
+        Process CSV files in larger chunks for better speed
+        """
+        language_tags = {
+            'en': '[LANG_EN]',
+            'ar': '[LANG_AR]',
+            'eg': '[LANG_AR_EG]'
+        }
+
+        chunk_files = []
+        total_samples = 0
+
+        for csv_file in tqdm(csv_files, desc="Processing CSV files"):
+            logger.info(f"Processing {os.path.basename(csv_file)} in chunks")
+
+            try:
+                chunk_count = 0
+                for chunk in pd.read_csv(csv_file, chunksize=self.chunk_size):
+                    # Clean chunk
                     chunk = chunk.dropna(subset=['prompt', 'response'])
                     chunk = chunk[chunk['prompt'].str.strip() != '']
                     chunk = chunk[chunk['response'].str.strip() != '']
@@ -176,47 +270,45 @@ class ChunkedDatasetProcessor:
                         axis=1
                     )
 
-                    # Process chunk into tensors
-                    input_tensors = []
-                    target_tensors = []
+                    # Batch tokenization for speed
+                    prompts = chunk['prompt'].tolist()
+                    responses = chunk['response'].tolist()
 
-                    for _, row in chunk.iterrows():
-                        input_encoding = tokenizer(
-                            row['prompt'],
-                            max_length=max_length,
-                            padding='max_length',
-                            truncation=True,
-                            return_tensors="pt",
-                            add_special_tokens=True
-                        )
-                        target_encoding = tokenizer(
-                            row['response'],
-                            max_length=max_length,
-                            padding='max_length',
-                            truncation=True,
-                            return_tensors="pt",
-                            add_special_tokens=True
-                        )
-                        input_tensors.append(input_encoding["input_ids"].squeeze(0))
-                        target_tensors.append(target_encoding["input_ids"].squeeze(0))
+                    # Tokenize in batches
+                    input_encodings = tokenizer(
+                        prompts,
+                        max_length=max_length,
+                        padding='max_length',
+                        truncation=True,
+                        return_tensors="pt",
+                        add_special_tokens=True
+                    )
 
-                    if input_tensors:
-                        # Save chunk
-                        chunk_file = os.path.join(
-                            self.cache_dir,
-                            f"chunk_{os.path.basename(csv_file)}_{chunk_count}.pt"
-                        )
-                        torch.save({
-                            'input_ids': torch.stack(input_tensors),
-                            'target_ids': torch.stack(target_tensors)
-                        }, chunk_file)
+                    target_encodings = tokenizer(
+                        responses,
+                        max_length=max_length,
+                        padding='max_length',
+                        truncation=True,
+                        return_tensors="pt",
+                        add_special_tokens=True
+                    )
 
-                        chunk_files.append(chunk_file)
-                        total_samples += len(input_tensors)
-                        chunk_count += 1
+                    # Save chunk
+                    chunk_file = os.path.join(
+                        self.cache_dir,
+                        f"chunk_{os.path.basename(csv_file)}_{chunk_count}.pt"
+                    )
+                    torch.save({
+                        'input_ids': input_encodings['input_ids'],
+                        'target_ids': target_encodings['input_ids']
+                    }, chunk_file)
+
+                    chunk_files.append(chunk_file)
+                    total_samples += len(input_encodings['input_ids'])
+                    chunk_count += 1
 
                     # Clear memory
-                    del chunk, input_tensors, target_tensors
+                    del chunk, input_encodings, target_encodings
                     gc.collect()
 
             except Exception as e:
@@ -229,12 +321,15 @@ class ChunkedDatasetProcessor:
 
 class ChunkedTensorDataset(Dataset):
     """
-    Dataset that loads tensor chunks on demand
+    Dataset that loads tensor chunks on demand with caching for speed
     """
-    def __init__(self, chunk_files):
+    def __init__(self, chunk_files, cache_chunks_in_memory=3):
         self.chunk_files = chunk_files
         self.chunk_info = []
         self.total_samples = 0
+        self.cache_chunks_in_memory = cache_chunks_in_memory
+        self.chunk_cache = {}  # LRU cache for chunks
+        self.cache_order = []  # Track access order for LRU
 
         # Build index of chunks
         for chunk_file in chunk_files:
@@ -247,12 +342,35 @@ class ChunkedTensorDataset(Dataset):
                     'size': chunk_size
                 })
                 self.total_samples += chunk_size
+                del data  # Don't keep in memory yet
             except Exception as e:
                 logger.error(f"Error loading chunk {chunk_file}: {e}")
                 continue
 
     def __len__(self):
         return self.total_samples
+
+    def _get_chunk_data(self, chunk_file):
+        """Get chunk data with LRU caching"""
+        if chunk_file in self.chunk_cache:
+            # Move to end (most recently used)
+            self.cache_order.remove(chunk_file)
+            self.cache_order.append(chunk_file)
+            return self.chunk_cache[chunk_file]
+
+        # Load chunk from disk
+        data = torch.load(chunk_file, map_location='cpu')
+
+        # Add to cache
+        self.chunk_cache[chunk_file] = data
+        self.cache_order.append(chunk_file)
+
+        # Remove oldest if cache is full
+        while len(self.chunk_cache) > self.cache_chunks_in_memory:
+            oldest_file = self.cache_order.pop(0)
+            del self.chunk_cache[oldest_file]
+
+        return data
 
     def __getitem__(self, idx):
         # Find which chunk contains this index
@@ -265,14 +383,75 @@ class ChunkedTensorDataset(Dataset):
         if chunk_info is None:
             raise IndexError(f"Index {idx} out of range")
 
-        # Load chunk and get specific item
-        data = torch.load(chunk_info['file'], map_location='cpu')
+        # Get chunk data (cached)
+        data = self._get_chunk_data(chunk_info['file'])
         chunk_idx = idx - chunk_info['start_idx']
 
         return (
             data['input_ids'][chunk_idx],
             data['target_ids'][chunk_idx]
         )
+
+
+def prepare_balanced_dataset(train_csv_directory, test_csv_directory=None,
+                           tokenizer=None, max_length=256,
+                           chunk_size=5000, cache_chunks=5):
+    """
+    Balanced approach: Fast preprocessing + reasonable memory usage
+
+    Args:
+        train_csv_directory: Directory with training CSV files
+        test_csv_directory: Directory with test CSV files (optional)
+        tokenizer: Tokenizer for text processing
+        max_length: Maximum sequence length
+        chunk_size: Size of processing chunks (larger = faster)
+        cache_chunks: Number of chunks to keep in memory (more = faster)
+
+    Returns:
+        Dictionary with train and test datasets
+    """
+
+    # Find CSV files
+    train_csv_files = glob.glob(os.path.join(train_csv_directory, "*.csv"))
+    test_csv_files = []
+    if test_csv_directory:
+        test_csv_files = glob.glob(os.path.join(test_csv_directory, "*.csv"))
+
+    if not train_csv_files:
+        logger.error(f"No CSV files found in {train_csv_directory}")
+        return None
+
+    logger.info(f"Found {len(train_csv_files)} training files")
+    if test_csv_files:
+        logger.info(f"Found {len(test_csv_files)} test files")
+
+    # Use faster chunked processing
+    processor = FastChunkedDatasetProcessor(chunk_size=chunk_size)
+
+    # Process training files
+    train_chunks, train_samples = processor.process_csv_files_chunked_fast(
+        train_csv_files, tokenizer, max_length
+    )
+    train_dataset = ChunkedTensorDataset(train_chunks, cache_chunks_in_memory=cache_chunks)
+
+    if test_csv_files:
+        # Process test files
+        test_chunks, test_samples = processor.process_csv_files_chunked_fast(
+            test_csv_files, tokenizer, max_length
+        )
+        test_dataset = ChunkedTensorDataset(test_chunks, cache_chunks_in_memory=cache_chunks)
+    else:
+        # Split training data
+        test_size = int(0.05 * len(train_dataset))
+        train_size = len(train_dataset) - test_size
+        train_dataset, test_dataset = torch.utils.data.random_split(
+            train_dataset, [train_size, test_size]
+        )
+
+    return {
+        "train": train_dataset,
+        "test": test_dataset
+    }
 
 
 def prepare_memory_efficient_dataset(train_csv_directory, test_csv_directory=None,
@@ -376,17 +555,20 @@ def get_memory_usage():
 # Drop-in replacement functions for backward compatibility
 def prepare_high_quality_training_dataset_memory_efficient(train_csv_directory, test_csv_directory=None,
                                                           test_split_ratio=0.05, tokenizer=None,
-                                                          max_seq_length=256, processing_method="streaming"):
+                                                          max_seq_length=256, processing_method="balanced",
+                                                          chunk_size=5000, cache_chunks=5):
     """
-    Drop-in replacement for the original function with memory efficiency
+    Drop-in replacement with balanced speed/memory approach
 
     Args:
         train_csv_directory: Path to directory containing training CSV files
         test_csv_directory: Optional path to directory containing test CSV files
         test_split_ratio: Ratio for test split when test_csv_directory is None
-        tokenizer: Tokenizer for processing (required for memory-efficient version)
+        tokenizer: Tokenizer for processing (required)
         max_seq_length: Maximum sequence length
-        processing_method: "streaming" or "chunked"
+        processing_method: "streaming" (slowest, least memory), "balanced" (good balance), or "chunked" (faster, more memory)
+        chunk_size: Size of processing chunks (larger = faster)
+        cache_chunks: Number of chunks to keep in memory (more = faster)
 
     Returns:
         Dictionary with train and test datasets (already tensorized)
@@ -397,13 +579,25 @@ def prepare_high_quality_training_dataset_memory_efficient(train_csv_directory, 
     logger.info("Preparing memory-efficient datasets for fine-tuning")
     logger.info(get_memory_usage())
 
-    datasets = prepare_memory_efficient_dataset(
-        train_csv_directory=train_csv_directory,
-        test_csv_directory=test_csv_directory,
-        tokenizer=tokenizer,
-        max_length=max_seq_length,
-        processing_method=processing_method
-    )
+    if processing_method == "balanced":
+        # Use the new balanced approach
+        datasets = prepare_balanced_dataset(
+            train_csv_directory=train_csv_directory,
+            test_csv_directory=test_csv_directory,
+            tokenizer=tokenizer,
+            max_length=max_seq_length,
+            chunk_size=chunk_size,
+            cache_chunks=cache_chunks
+        )
+    else:
+        # Use the original streaming/chunked approach
+        datasets = prepare_memory_efficient_dataset(
+            train_csv_directory=train_csv_directory,
+            test_csv_directory=test_csv_directory,
+            tokenizer=tokenizer,
+            max_length=max_seq_length,
+            processing_method=processing_method
+        )
 
     if datasets is None:
         logger.error("Failed to prepare datasets")

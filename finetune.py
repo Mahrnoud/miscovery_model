@@ -151,37 +151,39 @@ def main(args):
     if args.checkpoint_path:
         model = load_checkpoint(args.checkpoint_path, model, optimizer, device)
 
-    # Load and process datasets using the memory-efficient version
+    # Load and process datasets using the BALANCED approach (recommended)
     logger.info("Preparing datasets for fine-tuning")
     raw_datasets = prepare_high_quality_training_dataset_memory_efficient(
         train_csv_directory=args.train_data_dir,
         test_csv_directory=args.test_data_dir,
         test_split_ratio=args.test_split,
-        tokenizer=tokenizer,  # NEW: Now required as parameter
-        max_seq_length=args.max_seq_length,  # NEW: Pass max length
-        processing_method="streaming"  # NEW: Choose "streaming" or "chunked"
+        tokenizer=tokenizer,
+        max_seq_length=args.max_seq_length,
+        processing_method="balanced",  # NEW: Balanced approach
+        chunk_size=5000,  # NEW: Larger chunks = faster processing
+        cache_chunks=5  # NEW: Keep 5 chunks in memory = faster training
     )
 
     # Skip tensor conversion (already done)
-    logger.info("Datasets are already tensorized")
     tensor_datasets = get_tensor_datasets_memory_efficient(raw_datasets, tokenizer, args)
 
-    # Create dataloaders (same as before)
-    logger.info("Creating dataloaders")
+    # Create dataloaders with optimized settings
     train_dataloader = DataLoader(
         tensor_datasets["train"],
         batch_size=args.batch_size,
         shuffle=True,
-        num_workers=0,  # IMPORTANT: Set to 0 for streaming datasets
-        pin_memory=True
+        num_workers=2,  # Can use workers now
+        pin_memory=True,
+        prefetch_factor=2  # Prefetch for speed
     )
 
     test_dataloader = DataLoader(
         tensor_datasets["test"],
         batch_size=args.batch_size,
         shuffle=False,
-        num_workers=0,  # IMPORTANT: Set to 0 for streaming datasets
-        pin_memory=True
+        num_workers=2,
+        pin_memory=True,
+        prefetch_factor=2
     )
 
     # Check first few batches
@@ -286,7 +288,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_workers", type=int, default=2, help="Number of dataloader workers")
 
     # Evaluation parameters
-    parser.add_argument("--eval_steps", type=int, default=5000, help="Evaluate every N steps")
+    parser.add_argument("--eval_steps", type=int, default=8000, help="Evaluate every N steps")
     parser.add_argument("--save_steps", type=int, default=100000, help="Save checkpoint every N steps")
     parser.add_argument("--max_checkpoints", type=int, default=2, help="Maximum number of checkpoints to keep")
 
