@@ -267,9 +267,9 @@ def train_model(model, train_dataloader, criterion, optimizer, scheduler,
                 learning_rates.append(current_lr)
                 train_losses.append(loss.item() * gradient_accumulation_steps)
 
-                # Log info periodically
-                if global_step % 100 == 0:
-                    print(f"\nStep {global_step} - Current learning rate: {current_lr:.7f}")
+                # # Log info periodically
+                # if global_step % 100 == 0:
+                #     print(f"\nStep {global_step} - Current learning rate: {current_lr:.7f}")
 
                 # Calculate steps to epoch end for evaluation timing
                 steps_to_epoch_end = len(train_dataloader) - (batch_idx + 1)
