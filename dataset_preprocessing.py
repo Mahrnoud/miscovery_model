@@ -102,7 +102,8 @@ class StreamingCSVDataset(Dataset):
                 row = chunk.iloc[row_in_chunk]
 
                 # Process the row
-                prompt = f"[REORDER] {self.language_tags.get(row['language'], '[LANG_UNKNOWN]')} {row['prompt']}"
+                # prompt = f"[REORDER] {self.language_tags.get(row['language'], '[LANG_UNKNOWN]')} {row['prompt']}"
+                prompt = row['prompt']
                 response = row['response']
 
                 # Tokenize
@@ -174,7 +175,8 @@ class ChunkedDatasetProcessor:
                     target_ids_list = []
 
                     for _, row in chunk.iterrows():
-                        prompt = f"[REORDER] {language_tags.get(row['language'], '[LANG_UNKNOWN]')} {row['prompt']}"
+                        # prompt = f"[REORDER] {language_tags.get(row['language'], '[LANG_UNKNOWN]')} {row['prompt']}"
+                        prompt = row['prompt']
                         response = row['response']
 
                         # Tokenize individually
@@ -265,10 +267,10 @@ class FastChunkedDatasetProcessor:
                         continue
 
                     # Add language tags
-                    chunk['prompt'] = chunk.apply(
-                        lambda row: f"[REORDER] {language_tags.get(row['language'], '[LANG_UNKNOWN]')} {row['prompt']}",
-                        axis=1
-                    )
+                    # chunk['prompt'] = chunk.apply(
+                    #     lambda row: f"[REORDER] {language_tags.get(row['language'], '[LANG_UNKNOWN]')} {row['prompt']}",
+                    #     axis=1
+                    # )
 
                     # Batch tokenization for speed
                     prompts = chunk['prompt'].tolist()
