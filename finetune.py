@@ -290,7 +290,7 @@ if __name__ == "__main__":
     # Evaluation parameters
     parser.add_argument("--eval_steps", type=int, default=10000, help="Evaluate every N steps")
     parser.add_argument("--save_steps", type=int, default=1000000, help="Save checkpoint every N steps")
-    parser.add_argument("--max_checkpoints", type=int, default=100, help="Maximum number of checkpoints to keep")
+    parser.add_argument("--max_checkpoints", type=int, default=10, help="Maximum number of checkpoints to keep")
 
     # Learning rate scheduler parameters
     parser.add_argument("--lr_scheduler_type", type=str, default="constant",
