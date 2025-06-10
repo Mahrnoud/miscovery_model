@@ -136,7 +136,7 @@ def train_model(model, train_dataloader, criterion, optimizer, scheduler,
 
     # Create output directories
     os.makedirs(output_dir, exist_ok=True)
-    os.makedirs(os.path.join(output_dir, "checks"), exist_ok=True)
+    os.makedirs(os.path.join(output_dir, "checkpoints"), exist_ok=True)
     os.makedirs(os.path.join(output_dir, "figures"), exist_ok=True)
 
     # Initialize evaluator if evaluation is enabled
