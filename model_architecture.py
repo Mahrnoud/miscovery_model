@@ -27,7 +27,7 @@ class LayerScale(nn.Module):
 
 
 class RotaryEmbedding(nn.Module):
-    def __init__(self, dim, max_position_embeddings=1024, base=10000.0):
+    def __init__(self, dim, max_position_embeddings=256, base=10000.0):
         super().__init__()
         inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float() / dim))
         self.register_buffer("inv_freq", inv_freq)
@@ -95,7 +95,7 @@ def create_decoder_mask(tgt, pad_idx):
 
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self, d_model, num_heads, dropout=0.1, max_len=1024, use_flash_attn=False):
+    def __init__(self, d_model, num_heads, dropout=0.05, max_len=256, use_flash_attn=False):
         super(MultiHeadAttention, self).__init__()
         self.num_heads = num_heads
         self.d_model = d_model
@@ -190,7 +190,7 @@ class MultiHeadAttention(nn.Module):
 
 
 class FeedForward(nn.Module):
-    def __init__(self, d_model, d_ff=None, dropout=0.1):
+    def __init__(self, d_model, d_ff=None, dropout=0.05):
         super(FeedForward, self).__init__()
         if d_ff is None:
             # Increase to 4x for better representation capacity
@@ -211,7 +211,7 @@ class FeedForward(nn.Module):
 
 
 class TransformerEncoderLayer(nn.Module):
-    def __init__(self, d_model, num_heads, d_ff, dropout=0.1):
+    def __init__(self, d_model, num_heads, d_ff, dropout=0.05):
         super(TransformerEncoderLayer, self).__init__()
         self.norm1 = RMSNorm(d_model)
         self.norm2 = RMSNorm(d_model)
@@ -234,7 +234,7 @@ class TransformerEncoderLayer(nn.Module):
 
 
 class TransformerEncoder(nn.Module):
-    def __init__(self, d_model, num_heads, d_ff, num_layers, vocab_size, max_len, dropout=0.1):
+    def __init__(self, d_model, num_heads, d_ff, num_layers, vocab_size, max_len, dropout=0.05):
         super(TransformerEncoder, self).__init__()
         self.embedding = nn.Embedding(vocab_size, d_model)
         # Scale embeddings
@@ -260,7 +260,7 @@ class TransformerEncoder(nn.Module):
 
 
 class TransformerDecoderLayer(nn.Module):
-    def __init__(self, d_model, num_heads, d_ff, dropout=0.1):
+    def __init__(self, d_model, num_heads, d_ff, dropout=0.05):
         super(TransformerDecoderLayer, self).__init__()
         self.norm1 = RMSNorm(d_model)
         self.norm2 = RMSNorm(d_model)
@@ -297,7 +297,7 @@ class TransformerDecoderLayer(nn.Module):
 
 
 class TransformerDecoder(nn.Module):
-    def __init__(self, d_model, num_heads, d_ff, num_layers, vocab_size, max_len, dropout=0.1):
+    def __init__(self, d_model, num_heads, d_ff, num_layers, vocab_size, max_len, dropout=0.05):
         super(TransformerDecoder, self).__init__()
         self.embedding = nn.Embedding(vocab_size, d_model)
         # Scale embeddings
@@ -326,7 +326,7 @@ class TransformerDecoder(nn.Module):
 
 class Transformer(nn.Module):
     def __init__(self, d_model, num_heads, d_ff, num_encoder_layers, num_decoder_layers,
-                 vocab_size, max_len, pad_idx, dropout=0.1):
+                 vocab_size, max_len, pad_idx, dropout=0.05):
         super(Transformer, self).__init__()
         self.encoder = TransformerEncoder(d_model, num_heads, d_ff, num_encoder_layers,
                                           vocab_size, max_len, dropout)
@@ -361,13 +361,13 @@ class CustomTransformerConfig(PretrainedConfig):
     def __init__(
             self,
             vocab_size=100000,
-            d_model=384,
+            d_model=256,
             num_heads=8,
-            d_ff=1536,
+            d_ff=1024,
             num_encoder_layers=8,
             num_decoder_layers=8,
-            max_position_embeddings=1024,
-            dropout=0.1,
+            max_position_embeddings=256,
+            dropout=0.05,
             pad_token_id=0,
             bos_token_id=2,
             eos_token_id=3,
