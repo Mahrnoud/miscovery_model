@@ -234,8 +234,8 @@ if __name__ == "__main__":
     parser.add_argument("--d_model", type=int, default=256, help="Model dimension")
     parser.add_argument("--num_heads", type=int, default=8, help="Number of attention heads")
     parser.add_argument("--d_ff", type=int, default=1024, help="Feed-forward dimension (4x d_model)")
-    parser.add_argument("--num_encoder_layers", type=int, default=8, help="Number of encoder layers")
-    parser.add_argument("--num_decoder_layers", type=int, default=8, help="Number of decoder layers")
+    parser.add_argument("--num_encoder_layers", type=int, default=6, help="Number of encoder layers")
+    parser.add_argument("--num_decoder_layers", type=int, default=6, help="Number of decoder layers")
     parser.add_argument("--max_seq_length", type=int, default=256, help="Maximum sequence length")
     parser.add_argument("--dropout", type=float, default=0.05, help="Dropout rate")
 
