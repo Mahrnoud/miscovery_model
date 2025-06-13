@@ -27,7 +27,7 @@ class LayerScale(nn.Module):
 
 
 class RotaryEmbedding(nn.Module):
-    def __init__(self, dim, max_position_embeddings=256, base=10000.0):
+    def __init__(self, dim, max_position_embeddings=1024, base=10000.0):
         super().__init__()
         inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float() / dim))
         self.register_buffer("inv_freq", inv_freq)
@@ -95,7 +95,7 @@ def create_decoder_mask(tgt, pad_idx):
 
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self, d_model, num_heads, dropout=0.05, max_len=256, use_flash_attn=False):
+    def __init__(self, d_model, num_heads, dropout=0.05, max_len=1024, use_flash_attn=False):
         super(MultiHeadAttention, self).__init__()
         self.num_heads = num_heads
         self.d_model = d_model
@@ -364,9 +364,9 @@ class CustomTransformerConfig(PretrainedConfig):
             d_model=256,
             num_heads=8,
             d_ff=1024,
-            num_encoder_layers=8,
-            num_decoder_layers=8,
-            max_position_embeddings=256,
+            num_encoder_layers=6,
+            num_decoder_layers=6,
+            max_position_embeddings=1024,
             dropout=0.05,
             pad_token_id=0,
             bos_token_id=2,
