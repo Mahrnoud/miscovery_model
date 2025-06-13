@@ -276,11 +276,11 @@ if __name__ == "__main__":
     parser.add_argument("--dropout", type=float, default=0.01, help="Dropout rate")
 
     # Training parameters
-    parser.add_argument("--batch_size", type=int, default=2, help="Batch size")
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=1, help="Gradient accumulation steps")
+    parser.add_argument("--batch_size", type=int, default=8, help="Batch size")
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=2, help="Gradient accumulation steps")
     parser.add_argument("--learning_rate", type=float, default=2e-3, help="Learning rate for fine-tuning")
     parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay")
-    parser.add_argument("--warmup_steps", type=int, default=1, help="Warmup steps")
+    parser.add_argument("--warmup_steps", type=int, default=0, help="Warmup steps")
     parser.add_argument("--num_epochs", type=int, default=20, help="Number of epochs")
     parser.add_argument("--label_smoothing", type=float, default=0.1, help="Label smoothing value")
     parser.add_argument("--max_grad_norm", type=float, default=1.0, help="Maximum gradient norm")
