@@ -273,12 +273,12 @@ if __name__ == "__main__":
     parser.add_argument("--num_encoder_layers", type=int, default=6, help="Number of encoder layers")
     parser.add_argument("--num_decoder_layers", type=int, default=6, help="Number of decoder layers")
     parser.add_argument("--max_seq_length", type=int, default=256, help="Maximum sequence length")
-    parser.add_argument("--dropout", type=float, default=0.05, help="Dropout rate")
+    parser.add_argument("--dropout", type=float, default=0.01, help="Dropout rate")
 
     # Training parameters
     parser.add_argument("--batch_size", type=int, default=2, help="Batch size")
     parser.add_argument("--gradient_accumulation_steps", type=int, default=1, help="Gradient accumulation steps")
-    parser.add_argument("--learning_rate", type=float, default=2e-4, help="Learning rate for fine-tuning")
+    parser.add_argument("--learning_rate", type=float, default=2e-3, help="Learning rate for fine-tuning")
     parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay")
     parser.add_argument("--warmup_steps", type=int, default=1, help="Warmup steps")
     parser.add_argument("--num_epochs", type=int, default=20, help="Number of epochs")
