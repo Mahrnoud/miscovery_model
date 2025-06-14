@@ -281,7 +281,7 @@ if __name__ == "__main__":
     parser.add_argument("--learning_rate", type=float, default=1e-3, help="Learning rate for fine-tuning")
     parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay")
     parser.add_argument("--warmup_steps", type=int, default=0, help="Warmup steps")
-    parser.add_argument("--num_epochs", type=int, default=20, help="Number of epochs")
+    parser.add_argument("--num_epochs", type=int, default=30, help="Number of epochs")
     parser.add_argument("--label_smoothing", type=float, default=0.1, help="Label smoothing value")
     parser.add_argument("--max_grad_norm", type=float, default=1.0, help="Maximum gradient norm")
     parser.add_argument("--ema_decay", type=float, default=0.9999, help="EMA decay rate (0 to disable)")
