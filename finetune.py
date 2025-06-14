@@ -278,7 +278,7 @@ if __name__ == "__main__":
     # Training parameters
     parser.add_argument("--batch_size", type=int, default=8, help="Batch size")
     parser.add_argument("--gradient_accumulation_steps", type=int, default=2, help="Gradient accumulation steps")
-    parser.add_argument("--learning_rate", type=float, default=2e-3, help="Learning rate for fine-tuning")
+    parser.add_argument("--learning_rate", type=float, default=2e-4, help="Learning rate for fine-tuning")
     parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay")
     parser.add_argument("--warmup_steps", type=int, default=0, help="Warmup steps")
     parser.add_argument("--num_epochs", type=int, default=30, help="Number of epochs")
@@ -288,9 +288,9 @@ if __name__ == "__main__":
     parser.add_argument("--num_workers", type=int, default=2, help="Number of dataloader workers")
 
     # Evaluation parameters
-    parser.add_argument("--eval_steps", type=int, default=100000, help="Evaluate every N steps")
+    parser.add_argument("--eval_steps", type=int, default=1000000, help="Evaluate every N steps")
     parser.add_argument("--save_steps", type=int, default=1000000, help="Save checkpoint every N steps")
-    parser.add_argument("--max_checkpoints", type=int, default=20, help="Maximum number of checkpoints to keep")
+    parser.add_argument("--max_checkpoints", type=int, default=30, help="Maximum number of checkpoints to keep")
 
     # Learning rate scheduler parameters
     parser.add_argument("--lr_scheduler_type", type=str, default="constant",
